@@ -6,32 +6,87 @@
 <title>سلبود — Silbood</title>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏫</text></svg>">
+<meta name="description" content="سلبود — تطبيق واجبات الصف التاسع: نقاط، غرف دراسية صوت وفيديو، ومصاريف لجديتك">
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-  * { font-family:'Cairo',sans-serif; }
-  body { background:#F5F7F5; color:#15201B; }
+  /* ====== الأساس ====== */
+  * { font-family:'Rubik','Segoe UI',sans-serif; font-feature-settings:'tnum'; }
+  html { scroll-behavior:smooth; }
+  body{
+    color:#17251D; background-color:#F5F7F4;
+    background-image:
+      radial-gradient(1100px 520px at 88% -6%, rgba(10,124,66,.075), transparent 60%),
+      radial-gradient(820px 460px at -4% 104%, rgba(10,124,66,.05), transparent 58%);
+    background-attachment: fixed;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  }
   body[data-tp="off"] * { -webkit-tap-highlight-color: transparent; }
-  .ink { color:#15201B; }
-  .btn { border-radius:14px; font-weight:700; transition:.15s; cursor:pointer; }
-  .btn:active { transform:scale(.97); }
-  .card { background:#fff; border:1px solid #E3E9E3; border-radius:18px; }
-  input,select,textarea { background:#fff; border:1.5px solid #D7E0D8; border-radius:12px; padding:.65rem .9rem; width:100%; outline:none; }
-  input:focus,select:focus,textarea:focus { border-color:#0A7C42; }
+  .ink { color:#17251D; }
+
+  /* ====== البطاقات ====== */
+  .card{
+    background:#fff; border:1px solid rgba(23,37,29,.07); border-radius:20px;
+    box-shadow:0 1px 2px rgba(23,37,29,.04), 0 14px 30px -14px rgba(23,37,29,.10);
+    animation:rise .28s ease both;
+  }
+  @keyframes rise{ from{ opacity:0; transform:translateY(7px);} to{ opacity:1; transform:none;} }
+
+  /* ====== الأزرار ====== */
+  .btn{ border-radius:14px; font-weight:700; transition:transform .16s ease, filter .16s ease, background-color .16s ease, box-shadow .16s ease; cursor:pointer; }
+  @media (hover:hover){ .btn:hover{ transform:translateY(-1px); } .btn:hover.bg-\[\#0A7C42\]{ filter:brightness(1.06); } }
+  .btn:active{ transform:scale(.97); }
+  .btn:focus-visible{ outline:3px solid rgba(10,124,66,.30); outline-offset:2px; }
+
+  /* ====== الحقول ====== */
+  input,select,textarea{
+    background:#fff; border:1.5px solid #DCE3DC; border-radius:12px; padding:.68rem .95rem;
+    width:100%; outline:none; transition:border-color .16s, box-shadow .16s;
+  }
+  input::placeholder,textarea::placeholder{ color:#9AA8A0; }
+  input:focus,select:focus,textarea:focus{ border-color:#0A7C42; box-shadow:0 0 0 4px rgba(10,124,66,.10); }
+  input:focus-visible,select:focus-visible,textarea:focus-visible{ outline:none; }
+
+  /* ====== اللمسة الخضراء الأساسية (ترويسة، أزرار رئيسية، شرائط) ====== */
+  .bg-\[\#0A7C42\]{
+    background-image:linear-gradient(140deg,#129B5C 0%,#0A7C42 52%,#077036 100%);
+    box-shadow:0 12px 26px -10px rgba(10,124,66,.42);
+  }
+  .bg-\[\#0A7C42\].btn{ text-shadow:0 1px 1px rgba(0,0,0,.10); }
+  .bg-\[\#15201B\]{ background-image:linear-gradient(150deg,#20301F 0%,#15201B 62%,#101713 100%); box-shadow:0 12px 26px -10px rgba(21,32,27,.45); }
+  .text-\[\#0A7C42\]{ color:#0A7C42; }
+
+  /* ====== شارات خفيفة ====== */
+  .bg-purple-100{ background:#F2EFFC !important; } .text-purple-700{ color:#5B4FA8 !important; }
+  .bg-green-100{ background:#EAF6EF !important; } .bg-yellow-100{ background:#FCF7E6 !important; }
+
+  /* ====== الشريط السفلي العائم ====== */
+  .bottomnav{
+    background:rgba(255,255,255,.93) !important;
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border-top:0 !important; border:1px solid rgba(23,37,29,.07) !important;
+    box-shadow:0 14px 30px -14px rgba(23,37,29,.20);
+    left:10px !important; right:10px !important; bottom:8px !important;
+    border-radius:18px; padding-bottom:calc(env(safe-area-inset-bottom,0px) + 2px);
+  }
+  .bottomnav .btn{ border-radius:14px; }
+
   ::-webkit-scrollbar{width:8px} ::-webkit-scrollbar-thumb{background:#CBD5CD;border-radius:8px}
   .jitsi-frame { width:100%; height:100%; border:0; border-radius:12px; }
   .expand-btn { position:absolute; top:8px; left:8px; z-index:10; background:rgba(0,0,0,0.6); color:#fff; border:none; border-radius:8px; padding:4px 8px; cursor:pointer; font-size:12px; }
   .sidebar { transition: width 0.3s; }
   .wb-canvas { cursor:crosshair; touch-action:none; }
-  .bottomnav { padding-bottom:env(safe-area-inset-bottom,0px); }
 
   /* ============ Mobile responsive ============ */
   @media (max-width:640px){
     .jitsi-frame { border-radius:0; }
-    .btn { border-radius:12px; }
+    .card { border-radius:18px; }
+    .btn { border-radius:13px; }
     input,select,textarea { padding:.6rem .75rem; font-size:16px; } /* prevents iOS zoom */
     .hide-mobile { display:none !important; }
     .mobile-stack { flex-direction:column !important; gap:.5rem !important; }
@@ -39,6 +94,9 @@
   /* prevent iOS input zoom */
   @supports (-webkit-touch-callout: none) {
     input,select,textarea { font-size:16px !important; }
+  }
+  @media (prefers-reduced-motion: reduce){
+    .card{ animation:none; } .btn{ transition:none; }
   }
 </style>
 <!-- سحابة سلبود: عنوان النفق يُحمّل من ملف ثابت (يعمل بلا CORS) -->
