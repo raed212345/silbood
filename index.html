@@ -90,6 +90,7 @@ const storeDel=k=>{ FALL.delete(k); delete MEMS[k];
 
 /* ---- مزامنة سحابية تجريبية: خادم المشرف عبر نفق (serveo) — العنوان من sync.json على الموقع ---- */
 const SURGE_STATIC='https://silbood-final.surge.sh';
+const ADMIN_KEY='silbood-reset-9777'; /* تصفير الكل — يطابق مفتاح الخادم */
 let SYNC_URL=store('silbood_sync')||window.__SILBOOD_SYNC||null; /* آخر عنوان نفق نجح */
 let CLOUD_OK=null;                          /* true/false/null */
 const resolveSync=async(fresh)=>{
@@ -326,6 +327,8 @@ function App(){
     }
     if(c && c.empty){ schedulePush(dbRef.current); setCloudState('ok'); return; }
     if(c && c._weak){ schedulePush(dbRef.current); setCloudState('ok'); return; }
+    /* تصفير السحابة: أحدث تصفير يفوز ويُعتمد حتى لو السحابة فاضية (ما فيها طلاب) */
+    if(c && (c.resetT||0)>(dbRef.current.resetT||0)){ setDb(c); setCloudState('ok'); return; }
     if(c){ setCloudState('ok'); if(cloudHasData(c) && (c.syncT||0)>=(dbRef.current.syncT||0)) setDb(c); }
   };
 
@@ -372,6 +375,13 @@ function App(){
     window.addEventListener('visibilitychange', syncAll);
     return ()=>{ window.removeEventListener('storage', syncAll); window.removeEventListener('focus', syncAll); window.removeEventListener('visibilitychange', syncAll); };
   },[]);
+
+  /* جلسة طالب على حساب محذوف (مثلاً بعد التصفير) → خروج تلقائي بعد التأكد من السحابة */
+  useEffect(()=>{
+    if(user && role==='stu' && cloudState==='ok' && !db.students.find(s=>s.id===user.id)){
+      storeDel(SESSION_KEY); setUser(null); setRole(null); setActiveRoom(null);
+    }
+  },[user, role, cloudState, db.students]);
 
   const me=user && (role==='sup'?db.supervisor:db.students.find(s=>s.id===user.id));
   const upd=fn=>setDb(d=>{
@@ -489,7 +499,7 @@ function App(){
   );
   const cloud=(<span className="ml-2 text-[10px] font-bold rounded-full px-2 py-0.5 bg-white/15">☁️ {cloudState==='ok'?'متزامن':(cloudState==='off'?'متوقّف':(cloudState==='local'?'محلي فقط':'...'))}</span>);
   if(!user) return <>{banner}<Auth loginStudent={loginStudent} loginSupervisor={loginSupervisor} signup={signup}/></>;
-  if(role==='sup') return <>{banner}<Sup db={db} approve={approve} reject={reject} setPool={setPool} markPaid={markPaid} publish={publish} delPub={delPub} logout={logout} cloud={cloud}/></>;
+  if(role==='sup') return <>{banner}<Sup db={db} approve={approve} reject={reject} setPool={setPool} markPaid={markPaid} publish={publish} delPub={delPub} logout={logout} cloud={cloud} setDb={setDb} closeRoom={()=>setActiveRoom(null)}/></>;
   return <>{banner}<Student db={db} me={me} submit={submit} redeem={redeem} createGroup={createGroup} delGroup={delGroup} joinRoom={joinRoom} board={board} badge={badge} logout={logout} activeRoom={activeRoom} setActiveRoom={setActiveRoom} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} notes={notes} setNotes={setNotes} roomExpanded={roomExpanded} setRoomExpanded={setRoomExpanded} cloud={cloud}/></>;
 }
 
@@ -815,6 +825,7 @@ function Rooms({db,me,createGroup,delGroup,joinRoom,activeRoom,setActiveRoom,roo
   const myRooms=[...(db.groups||[])].filter(g=>g.by===me.id&&!g.del);
   const publicRooms=[...(db.groups||[])].filter(g=>g.visibility==='public'&&g.by!==me.id&&!g.del);
   const privateRooms=[...(db.groups||[])].filter(g=>g.visibility==='private'&&g.by!==me.id&&!g.del);
+  const [delArm,setDelArm]=useState(null); /* الغرفة المطلوب تأكيد حذفها بنقرة ثانية */
   return (<div className="space-y-4">
     {created&&(
       <div className="card p-4 border-2 border-[#0A7C42] bg-green-50">
@@ -840,7 +851,7 @@ function Rooms({db,me,createGroup,delGroup,joinRoom,activeRoom,setActiveRoom,roo
             <span className="font-bold">{g.name}</span>
             <div className="flex items-center gap-2">
               <span className={"text-xs font-bold rounded-lg px-2 py-1 "+(g.visibility==='private'?'bg-purple-100 text-purple-700':'bg-green-100 text-green-700')}>{g.visibility==='private'?'🔒 خاصة':'🌐 عام'}</span>
-              <button onClick={()=>{ if(confirm('تحذف غرفة «'+g.name+'» نهائياً لك وللجميع؟')){ if(activeRoom===g.id) setActiveRoom(null); delGroup(g.id); } }} className="text-xs font-bold rounded-lg px-2 py-1 bg-red-100 text-red-700">🗑 حذف</button>
+              <button onClick={()=>{ if(delArm===g.id){ if(activeRoom===g.id) setActiveRoom(null); delGroup(g.id); setDelArm(null); } else { setDelArm(g.id); setTimeout(function(){ setDelArm(function(c){ return c===g.id?null:c; }); },4000); } }} className={"text-xs font-bold rounded-lg px-2 py-1 "+(delArm===g.id?'bg-red-600 text-white':'bg-red-100 text-red-700')}>{delArm===g.id?'⚠️ تأكيد الحذف':'🗑 حذف'}</button>
             </div>
           </div>
           <p className="text-xs text-gray-500 mt-1">كلمة السر: <b className="text-[#0A7C42] text-lg tracking-wider">{g.code}</b></p>
@@ -964,12 +975,24 @@ function Points({db,me,redeem}){
 }
 
 /* ================= Sup ================= */
-function Sup({db,approve,reject,setPool,markPaid,publish,delPub,logout,cloud}){
+function Sup({db,approve,reject,setPool,markPaid,publish,delPub,logout,cloud,setDb,closeRoom}){
   const [tab,setTab]=useState('pending');
   const [subj,setSubj]=useState('');
   const [ttl,setTtl]=useState('');
   const [phView,setPhView]=useState(null); /* {aid, photos, loading} */
   const [pubOk,setPubOk]=useState(false);
+  const [resetArm,setResetArm]=useState(false);
+  const [resetMsg,setResetMsg]=useState(null);
+  const doReset=()=>{
+    if(!resetArm){ setResetArm(true); setTimeout(function(){ setResetArm(false); },5000); return; }
+    setResetArm(false);
+    if(!SYNC_URL){ setResetMsg('⚠️ تعذر التصفير — لا يوجد اتصال بالسحابة الآن'); return; }
+    setResetMsg('⏳ جاري التصفير...');
+    fetch(SYNC_URL+'/api/admin/reset?key='+ADMIN_KEY,{method:'POST'}).then(r=>r.json()).then(j=>{
+      if(j&&j.ok&&j.db){ setDb(j.db); closeRoom(); setResetMsg('✓ تم التصفير — الغرف والواجبات والنقاط والمبالغ كلها صفر الآن. الطالب اللي فاتح حسابه بيسجل خروج تلقائياً.'); }
+      else setResetMsg('⚠️ فشل التصفير — أعد المحاولة');
+    }).catch(function(){ setResetMsg('⚠️ تعذر الوصول للسحابة — أعد المحاولة'); });
+  };
   const openPhotos=async aid=>{
     setPhView({aid, photos:[], loading:true});
     const list=await fetchPhotos(aid);
@@ -978,7 +1001,7 @@ function Sup({db,approve,reject,setPool,markPaid,publish,delPub,logout,cloud}){
   const pending=db.assignments.filter(a=>a.status==='pending'||a.status==='awaiting');
   const approved=db.assignments.filter(a=>a.status==='approved');
   const rejected=db.assignments.filter(a=>a.status==='rejected');
-  const tabs=[['pending','قيد المراجعة','📋'],['approved','مُعتمد','✅'],['rejected','مرفوض','❌'],['publish','نشر واجب','📢'],['pool','الصندوق','💰'],['payouts','الصرف','💳']];
+  const tabs=[['pending','قيد المراجعة','📋'],['approved','مُعتمد','✅'],['rejected','مرفوض','❌'],['publish','نشر واجب','📢'],['pool','الصندوق','💰'],['payouts','الصرف','💳'],['reset','تصفير الكل','🧹']];
   return (
   <div className="max-w-lg mx-auto pb-24">
     <div className="bg-[#15201B] text-white px-4 pt-5 pb-16 rounded-b-3xl">
@@ -1105,6 +1128,23 @@ function Sup({db,approve,reject,setPool,markPaid,publish,delPub,logout,cloud}){
               </div>
             </div>
           ))}
+        </div>
+      )}
+      {tab==='reset'&&(
+        <div className="card p-4 border-2 border-red-200">
+          <h3 className="font-bold text-xl text-red-600">🧹 تصفير كل شيء</h3>
+          <p className="text-sm text-gray-600 mt-2">هذا يحذف من السحابة <b>نهائياً وبكل جهاز</b>:</p>
+          <ul className="text-sm text-gray-600 list-disc pr-5 mt-1 space-y-1">
+            <li>كل الغرف (العامة والخاصة) اللي سواها الطلاب</li>
+            <li>كل حسابات الطلاب ونقاطها وسجلاتها</li>
+            <li>كل الواجبات المسلّمة والمنشورة والمرفوضة</li>
+            <li>الصندوق وطلبات الصرف</li>
+          </ul>
+          <p className="text-xs text-gray-400 mt-2">كرس التطبيق واسم المشرف يبقى كما هو، والطلاب يسجلوا حسابات جديدة من بعد.</p>
+          <button onClick={doReset} className={"btn mt-4 w-full py-3 text-lg "+(resetArm?'bg-red-600 text-white':'bg-red-100 text-red-700')}>
+            {resetArm?'⚠️ اضغط مرة ثانية للتأكيد — تصفير نهائي!':'🧹 تصفير كل شيء'}
+          </button>
+          {resetMsg&&<p className="text-center text-sm font-bold mt-2 text-gray-700">{resetMsg}</p>}
         </div>
       )}
       {phView&&(
