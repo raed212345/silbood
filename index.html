@@ -92,7 +92,13 @@ const storeDel=k=>{ FALL.delete(k); delete MEMS[k];
 const SURGE_STATIC='https://silbood-final.surge.sh';
 let SYNC_URL=store('silbood_sync')||window.__SILBOOD_SYNC||null; /* آخر عنوان نفق نجح */
 let CLOUD_OK=null;                          /* true/false/null */
-const resolveSync=async()=>{
+const resolveSync=async(fresh)=>{
+  /* إعادة مسح عند فشل: ناخذ أحدث sync.json مباشرة حتى لو التبويب قديم */
+  if(fresh){
+    try{ const r=await fetch('sync.json?r='+Date.now(),{cache:'no-store'}); if(r.ok){ const j=await r.json(); if(j.sync && j.sync!==SYNC_URL){ SYNC_URL=j.sync; store('silbood_sync',SYNC_URL); return; } } }catch(e){}
+    try{ const r=await fetch(SURGE_STATIC+'/sync.json?r='+Date.now(),{cache:'no-store'}); if(r.ok){ const j=await r.json(); if(j.sync){ SYNC_URL=j.sync; store('silbood_sync',SYNC_URL); } } }catch(e){}
+    return;
+  }
   /* 1) من ملف sync.js المتحمّل بالصفحة (يعمل من أي origin) */
   if(window.__SILBOOD_SYNC){ SYNC_URL=window.__SILBOOD_SYNC; store('silbood_sync',SYNC_URL); return; }
   /* 2) fetch نسبي (نفس الموقع) */
@@ -303,7 +309,14 @@ function App(){
   const pushRefT=useRef(null);
   const schedulePush=d=>{
     if(pushRefT.current) clearTimeout(pushRefT.current);
-    pushRefT.current=setTimeout(()=>{ pushCloud(d).then(ok=>setCloudState(ok?'ok':'off')); },800);
+    pushRefT.current=setTimeout(async()=>{
+      const ok=await pushCloud(d);
+      if(ok){ setCloudState('ok'); return; }
+      /* فشل — نعيد مسح أحدث عنوان ونجرب مرة ثانية */
+      await resolveSync(true);
+      const ok2=await pushCloud(d);
+      setCloudState(ok2?'ok':'off');
+    },800);
   };
   /* تسوية سحابة: تبنّي الأحدث فقط، وزرع بياناتنا لو السحابة فاضية */
   const adoptCloud=c=>{
@@ -330,7 +343,12 @@ function App(){
   useEffect(()=>{ save(db); schedulePush(db); },[db]);
 
   useEffect(()=>{
-    const t=setInterval(()=>{ if(document.visibilityState==='visible' && SYNC_URL){ pullCloud().then(adoptCloud); } },45000);
+    const t=setInterval(async()=>{
+      if(document.visibilityState!=='visible' || !SYNC_URL) return;
+      const c=await pullCloud();
+      if(c===null){ await resolveSync(true); adoptCloud(await pullCloud()); }
+      else adoptCloud(c);
+    },45000);
     return ()=>clearInterval(t);
   },[]);
 
