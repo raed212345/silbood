@@ -58,7 +58,15 @@
     box-shadow:0 12px 26px -10px rgba(10,124,66,.42);
   }
   .bg-\[\#0A7C42\].btn{ text-shadow:0 1px 1px rgba(0,0,0,.10); }
+  .bg-\[\#0A7C42\].rounded-b-3xl{
+    background-image:radial-gradient(rgba(255,255,255,.13) 1.4px, transparent 1.5px), linear-gradient(140deg,#129B5C 0%,#0A7C42 52%,#077036 100%);
+    background-size:20px 20px, auto;
+  }
   .bg-\[\#15201B\]{ background-image:linear-gradient(150deg,#20301F 0%,#15201B 62%,#101713 100%); box-shadow:0 12px 26px -10px rgba(21,32,27,.45); }
+  .bg-\[\#15201B\].rounded-b-3xl{
+    background-image:radial-gradient(rgba(255,255,255,.10) 1.4px, transparent 1.5px), linear-gradient(150deg,#20301F 0%,#15201B 62%,#101713 100%);
+    background-size:20px 20px, auto;
+  }
   .text-\[\#0A7C42\]{ color:#0A7C42; }
 
   /* ====== شارات خفيفة ====== */
@@ -98,6 +106,38 @@
   @media (prefers-reduced-motion: reduce){
     .card{ animation:none; } .btn{ transition:none; }
   }
+
+  /* ====== شاشة الدخول: صورة خلفية + بطاقة زجاج ====== */
+  .auth-wrap{
+    min-height:100vh;
+    background-color:#123B26;
+    background-image:
+      linear-gradient(155deg, rgba(11,96,55,.80), rgba(9,56,38,.86)),
+      url('https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1600&q=70');
+    background-size:cover; background-position:center;
+  }
+  .glass{
+    background:rgba(255,255,255,.94);
+    backdrop-filter:blur(18px) saturate(1.15); -webkit-backdrop-filter:blur(18px) saturate(1.15);
+    border:1px solid rgba(255,255,255,.75); border-radius:28px;
+    box-shadow:0 30px 60px -22px rgba(5,25,15,.55);
+  }
+  .brandchip{ background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.35); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border-radius:9999px; }
+  .floaty{
+    width:86px; height:86px; border-radius:30px; font-size:40px;
+    align-items:center; justify-content:center;
+    position:absolute; z-index:1;
+    background:rgba(255,255,255,.13); border:1px solid rgba(255,255,255,.30);
+    backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+    box-shadow:0 22px 40px -18px rgba(0,0,0,.45);
+    animation:floaty 5.5s ease-in-out infinite;
+  }
+  @keyframes floaty{ 0%,100%{ transform:translateY(0) rotate(-3deg);} 50%{ transform:translateY(-14px) rotate(4deg);} }
+
+  /* ====== البلاطات التعليمية (الرئيسية) ====== */
+  .action{ transition:transform .18s ease, box-shadow .18s ease; }
+  @media (hover:hover){ .action:hover{ transform:translateY(-3px); box-shadow:0 18px 34px -16px rgba(10,124,66,.28); } }
+  .bg-\[\#C9992E\]{ background-image:linear-gradient(140deg,#E3B744,#C9992E 55%,#A97B1E); box-shadow:0 12px 24px -10px rgba(201,153,46,.42); }
 </style>
 <!-- سحابة سلبود: عنوان النفق يُحمّل من ملف ثابت (يعمل بلا CORS) -->
 <script>window.__SILBOOD_SYNC=null;</script>
@@ -561,24 +601,36 @@ function App(){
   return <>{banner}<Student db={db} me={me} submit={submit} redeem={redeem} createGroup={createGroup} delGroup={delGroup} joinRoom={joinRoom} board={board} badge={badge} logout={logout} activeRoom={activeRoom} setActiveRoom={setActiveRoom} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} notes={notes} setNotes={setNotes} roomExpanded={roomExpanded} setRoomExpanded={setRoomExpanded} cloud={cloud}/></>;
 }
 
-/* ================= شاشة الدخول ================= */
+/* ================= شاشة الدخول (صورة + زجاج — تصميم أكاديمي) ================= */
 function Auth({loginStudent,loginSupervisor,signup}){
   const [tab,setTab]=useState('in');
   const [err,setErr]=useState(null);
   const [showT,setShowT]=useState(false);
   const [f,setF]=useState({name:'',username:'',password:'',consent:false,sup:''});
   return (
-  <div className="min-h-screen flex flex-col items-center justify-center p-4">
-    <div className="w-full max-w-md">
-      <div className="text-center mb-6">
-        <div className="text-6xl mb-2">🏫</div>
-        <h1 className="text-4xl font-black" style={{color:'#0A7C42'}}>سلبود</h1>
-        <p className="text-gray-500 mt-1">نقاطك لواجبك… ومصاريفك لجديتك</p>
-      </div>
-      <div className="card p-5">
-        <div className="flex gap-1 mb-4 bg-gray-100 rounded-xl p-1">
-          <button onClick={()=>setTab('in')} className={"flex-1 py-2 rounded-lg font-bold "+(tab==='in'?'bg-[#0A7C42] text-white':'text-gray-500')}>دخول</button>
-          <button onClick={()=>{setTab('up'); setShowT(true);}} className={"flex-1 py-2 rounded-lg font-bold "+(tab==='up'?'bg-[#0A7C42] text-white':'text-gray-500')}>حساب جديد</button>
+  <div className="auth-wrap flex flex-col items-center justify-center p-4 relative overflow-hidden">
+    {/* شرائح عائمة — روح أكاديمية */}
+    <div className="hidden sm:flex floaty" style={{top:'13%', right:'11%'}}>📚</div>
+    <div className="hidden sm:flex floaty" style={{top:'40%', right:'6%', animationDelay:'1.2s'}}>✏️</div>
+    <div className="hidden sm:flex floaty" style={{bottom:'15%', right:'15%', animationDelay:'2.1s'}}>🏆</div>
+    <div className="hidden sm:flex floaty" style={{top:'17%', left:'9%', animationDelay:'.6s'}}>🎥</div>
+    <div className="hidden sm:flex floaty" style={{bottom:'21%', left:'7%', animationDelay:'1.7s'}}>🪙</div>
+
+    {/* شريط العلامة */}
+    <div className="absolute top-4 right-4 sm:top-6 sm:right-8 z-10 flex items-center gap-2 brandchip text-white px-4 py-2 text-sm font-black">
+      <span className="text-xl">🏫</span> سلبود
+      <span className="hidden sm:inline text-white/70 font-medium">• {RULES.SCOPE}</span>
+    </div>
+
+    <div className="w-full max-w-md relative z-10 pt-12">
+      <div className="glass p-6 sm:p-7">
+        <div className="text-center mb-5">
+          <h1 className="text-3xl font-black text-[#0A7C42]">أهلاً بك في سلبود</h1>
+          <p className="text-gray-500 mt-1 text-sm">نقاطك لواجبك… ومصاريفك لجديتك</p>
+        </div>
+        <div className="flex gap-1 mb-4 bg-gray-100 rounded-2xl p-1">
+          <button onClick={()=>setTab('in')} className={"flex-1 py-2.5 rounded-xl font-bold text-sm transition "+(tab==='in'?'bg-[#0A7C42] text-white shadow-md':'text-gray-500')}>دخول</button>
+          <button onClick={()=>{setTab('up'); setShowT(true);}} className={"flex-1 py-2.5 rounded-xl font-bold text-sm transition "+(tab==='up'?'bg-[#0A7C42] text-white shadow-md':'text-gray-500')}>حساب جديد</button>
         </div>
         {err&&<div className="mb-3 text-sm bg-red-50 text-red-700 border border-red-200 rounded-xl p-3">{err}</div>}
         {tab==='in'?
@@ -609,7 +661,7 @@ function Auth({loginStudent,loginSupervisor,signup}){
           </div>
         }
       </div>
-      <p className="text-center text-xs text-gray-400 mt-4">المشرف المسؤول: {RULES.SUPERVISOR} • {RULES.SCOPE} • <button onClick={()=>setShowT(true)} className="underline text-[#0A7C42]">الشروط والخصوصية</button></p>
+      <p className="text-center text-[11px] text-white/80 mt-4">المشرف المسؤول: {RULES.SUPERVISOR} • <button onClick={()=>setShowT(true)} className="underline text-white font-bold">الشروط والخصوصية</button></p>
       {showT&&<TermsModal onClose={() => setShowT(false)} />}
     </div>
   </div>);
@@ -793,28 +845,29 @@ function Student({db,me,submit,redeem,createGroup,delGroup,joinRoom,board,badge,
 }
 
 function Home({db,me,pending,todayN,redeem,setTab}){
+  const iconOf=h=>h.type==='submit'?'✍️':h.type==='approve'?'✅':h.type==='reject'?'❌':'🪙';
   return (<div className="space-y-4">
     <div className="card p-4">
-      <p className="font-bold mb-2">وضعيت اليوم</p>
-      <div className="flex gap-3 text-sm">
-        <div className="flex-1 bg-gray-50 rounded-xl p-3 text-center"><div className="text-2xl font-black">{todayN}/{RULES.DAILY_CAP}</div><div className="text-gray-500">واجبات اليوم</div></div>
-        <div className="flex-1 bg-gray-50 rounded-xl p-3 text-center"><div className="text-2xl font-black">{pending.length}</div><div className="text-gray-500">بانتظار المشرف</div></div>
+      <p className="font-black mb-3">وضعيت اليوم</p>
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        <div className="rounded-2xl p-3 text-center bg-[#EAF6EF] border border-[#D2EADC]"><div className="text-3xl font-black text-[#0A7C42]">{todayN}/{RULES.DAILY_CAP}</div><div className="text-gray-500 text-xs mt-0.5">واجبات اليوم</div></div>
+        <div className="rounded-2xl p-3 text-center bg-[#FCF7E6] border border-[#F0E4C2]"><div className="text-3xl font-black text-[#B8860B]">{pending.length}</div><div className="text-gray-500 text-xs mt-0.5">بانتظار المشرف</div></div>
       </div>
     </div>
     <div className="card p-4">
-      <p className="font-bold mb-2">الصندوق هذا الشهر</p>
+      <p className="font-black mb-2">الصندوق هذا الشهر</p>
       <div className="flex justify-between text-sm text-gray-600 mb-1"><span>المتبقي للصرف الفوري</span><b>{jod(db.pool?db.pool.remaining:RULES.MONTHLY_POOL)}</b></div>
-      <div className="h-3 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-[#0A7C42]" style={{width:((db.pool?db.pool.remaining:RULES.MONTHLY_POOL)/RULES.MONTHLY_POOL*100)+'%'}}/></div>
+      <div className="h-3 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-[#0A7C42] rounded-full" style={{width:((db.pool?db.pool.remaining:RULES.MONTHLY_POOL)/RULES.MONTHLY_POOL*100)+'%'}}/></div>
       {me.points>=RULES.REDEEM_POINTS&&
         <button onClick={()=>alert(redeem(me.id)||'تم الاستبدال')} className="btn mt-3 w-full py-3 bg-[#C9992E] text-white">استبدل 500 نقطة → 30 قرشاً</button>}
     </div>
     <div className="grid grid-cols-2 gap-3">
-      <button onClick={()=>setTab('solve')} className="card p-4 text-right btn"><span className="text-2xl">✍️</span><p className="font-bold mt-1">حل واجب</p><p className="text-xs text-gray-500">+20 نقطة (فردي)</p></button>
-      <button onClick={()=>setTab('rooms')} className="card p-4 text-right btn"><span className="text-2xl">👥</span><p className="font-bold mt-1">غرفة جماعية</p><p className="text-xs text-gray-500">+10 لكل مجموعة</p></button>
+      <button onClick={()=>setTab('solve')} className="card p-4 text-right btn action"><span className="w-11 h-11 rounded-2xl bg-[#EAF6EF] flex items-center justify-center text-2xl">✍️</span><p className="font-black mt-2">حل واجب</p><p className="text-xs text-gray-500">+20 نقطة (فردي)</p><span className="text-xs font-bold text-[#0A7C42] mt-1 inline-block">نحلّه الآن ←</span></button>
+      <button onClick={()=>setTab('rooms')} className="card p-4 text-right btn action"><span className="w-11 h-11 rounded-2xl bg-[#F2EFFC] flex items-center justify-center text-2xl">👥</span><p className="font-black mt-2">غرفة جماعية</p><p className="text-xs text-gray-500">+10 لكل مجموعة</p><span className="text-xs font-bold text-[#5B4FA8] mt-1 inline-block">ادخل الغرفة ←</span></button>
     </div>
     {db.history.filter(h=>h.sid===me.id).slice(-5).reverse().map((h,i)=>(
       <div key={i} className="card px-4 py-2.5 flex justify-between items-center text-sm">
-        <span>{h.note}</span>
+        <span className="flex items-center gap-2"><span className="w-8 h-8 rounded-xl bg-gray-50 flex items-center justify-center flex-shrink-0">{iconOf(h)}</span>{h.note}</span>
         <span className={h.pts>0?'text-[#0A7C42] font-bold':h.pts<0?'text-red-600 font-bold':'text-gray-400'}>{h.pts>0?'+'+h.pts:h.pts<0?h.pts:''}</span>
       </div>
     ))}
