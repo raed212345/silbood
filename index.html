@@ -983,15 +983,30 @@ function Sup({db,approve,reject,setPool,markPaid,publish,delPub,logout,cloud,set
   const [pubOk,setPubOk]=useState(false);
   const [resetArm,setResetArm]=useState(false);
   const [resetMsg,setResetMsg]=useState(null);
-  const doReset=()=>{
+  const doReset=async()=>{
     if(!resetArm){ setResetArm(true); setTimeout(function(){ setResetArm(false); },5000); return; }
     setResetArm(false);
-    if(!SYNC_URL){ setResetMsg('⚠️ تعذر التصفير — لا يوجد اتصال بالسحابة الآن'); return; }
     setResetMsg('⏳ جاري التصفير...');
-    fetch(SYNC_URL+'/api/admin/reset?key='+ADMIN_KEY,{method:'POST'}).then(r=>r.json()).then(j=>{
-      if(j&&j.ok&&j.db){ const db2=Object.assign({}, j.db); db2.pool={month:monthKey(),remaining:RULES.MONTHLY_POOL}; setDb(db2); closeRoom(); setResetMsg('✓ تم التصفير — الغرف والواجبات والنقاط والمبالغ كلها صفر الآن. الطالب اللي فاتح حسابه بيسجل خروج تلقائياً.'); }
-      else setResetMsg('⚠️ فشل التصفير — أعد المحاولة');
-    }).catch(function(){ setResetMsg('⚠️ تعذر الوصول للسحابة — أعد المحاولة'); });
+    /* ناخذ أحدث عنوان نفق قبل المحاولة (حتى لو التبويب قديم) */
+    await resolveSync(true);
+    const url=SYNC_URL;
+    if(!url){ setResetMsg('⚠️ تعذر التصفير — لا يوجد اتصال بالسحابة الآن'); return; }
+    let j=null;
+    try{ const r=await fetch(url+'/api/admin/reset?key='+ADMIN_KEY,{method:'POST'}); j=await r.json(); }catch(e){}
+    /* فشل؟ إعادة مسح عنوان أحدث والمحاولة مرة ثانية */
+    if(!j||!j.ok){
+      await resolveSync(true);
+      if(SYNC_URL && SYNC_URL!==url){
+        try{ const r2=await fetch(SYNC_URL+'/api/admin/reset?key='+ADMIN_KEY,{method:'POST'}); j=await r2.json(); }catch(e){}
+      }
+    }
+    if(j&&j.ok&&j.db){
+      const db2=Object.assign({}, j.db); db2.pool={month:monthKey(),remaining:RULES.MONTHLY_POOL};
+      setDb(db2); closeRoom();
+      setResetMsg('✓ تم التصفير — الغرف والواجبات والنقاط والمبالغ كلها صفر الآن. الطالب اللي فاتح حسابه بيسجل خروج تلقائياً.');
+    } else {
+      setResetMsg('⚠️ تعذر الوصول للسحابة — تأكد من الشبكة ثم أعد المحاولة');
+    }
   };
   const openPhotos=async aid=>{
     setPhView({aid, photos:[], loading:true});
