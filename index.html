@@ -333,9 +333,11 @@ function App(){
     let dead=false;
     (async()=>{
       await resolveSync();
-      const c=await pullCloud();
+      let c=await pullCloud();
+      if(c===null){ await resolveSync(true); c=await pullCloud(); }
       if(dead) return;
       adoptCloud(c);
+      if(c===null){ setTimeout(async()=>{ await resolveSync(true); adoptCloud(await pullCloud()); },4000); }
     })();
     return ()=>{ dead=true; };
   },[]);
