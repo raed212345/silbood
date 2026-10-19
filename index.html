@@ -461,9 +461,9 @@ function App(){
   /* ---- groups ---- */
   const createGroup=(name,sid,opts)=>{ const g={id:'G'+Date.now(),name,room:'Silbood-'+Math.random().toString(36).slice(2,8),by:sid,ts:Date.now(),
     visibility:(opts&&opts.visibility)||'public',invited:(opts&&opts.invited)||[],code:genCode(),ed:Date.now()}; upd(d=>d.groups.unshift(g)); return g; };
-  const delGroup=gid=>upd(d=>{ d.groups=d.groups.filter(g=>g.id!==gid); });
+  const delGroup=gid=>upd(d=>{ const g=d.groups.find(x=>x.id===gid); if(g){ g.del=true; g.ed=Date.now(); d.groups=d.groups.filter(x=>x.id!==gid||x.del); } });
   const joinRoom=(code,meId)=>{ let msg=null; upd(d=>{
-    const g=d.groups.find(x=>x.code.toLowerCase()===code.toLowerCase().trim());
+    const g=d.groups.find(x=>x.code.toLowerCase()===code.toLowerCase().trim()&&!x.del);
     if(!g){ msg='كلمة السر غير صحيحة'; return; }
     if(g.visibility==='private' && g.by!==meId && !(g.invited||[]).includes(meId)){
       g.invited=[...(g.invited||[]), meId];
@@ -665,7 +665,7 @@ function Student({db,me,submit,redeem,createGroup,delGroup,joinRoom,board,badge,
   const pending=db.assignments.filter(a=>a.sid===me.id&&['pending','awaiting'].includes(a.status));
   const myBadge=badge(me.points);
   const tabs=[['home','الرئيسية','🏠'],['solve','الواجبات','✍️'],['rooms','الغرف','👥'],['board','المتصدرون','🏆'],['me','نقاطي','💰']];
-  const myRooms=[...(db.groups||[])].filter(g=>g.by===me.id);
+  const myRooms=[...(db.groups||[])].filter(g=>g.by===me.id&&!g.del);
   return (
     <div className="max-w-6xl mx-auto pb-24 flex gap-4">
       {/* Sidebar — يشتغل فقط وقت الفل سكرين بالغرفة */}
@@ -808,22 +808,13 @@ function Rooms({db,me,createGroup,delGroup,joinRoom,activeRoom,setActiveRoom,roo
   const [showCreate,setShowCreate]=useState(false);
   const [name,setName]=useState('');
   const [vis,setVis]=useState('public');
-  const [joinCode,setJoinCode]=useState('');
-  const [joinMsg,setJoinMsg]=useState(null);
   const [pwRoom,setPwRoom]=useState(null); /* الغرفة المطلوب إدخول كلمة سرها */
   const [pwVal,setPwVal]=useState('');
   const [created,setCreated]=useState(null); /* غرفة أُنشئت الآن — نعرضها على الصفحة */
   const [copied,setCopied]=useState(false);
-  const myRooms=[...(db.groups||[])].filter(g=>g.by===me.id);
-  const publicRooms=[...(db.groups||[])].filter(g=>g.visibility==='public'&&g.by!==me.id);
-  const privateRooms=[...(db.groups||[])].filter(g=>g.visibility==='private'&&g.by!==me.id);
-  const handleJoin=()=>{
-    const code=joinCode.trim();
-    if(!code){ setJoinMsg('أدخل كلمة السر'); return; }
-    const msg=joinRoom(code,me.id);
-    if(msg){ alert(msg); setJoinCode(''); setJoinMsg(null); }
-    else setJoinMsg('كلمة السر غير صحيحة — تحقق من صاحب الغرفة');
-  };
+  const myRooms=[...(db.groups||[])].filter(g=>g.by===me.id&&!g.del);
+  const publicRooms=[...(db.groups||[])].filter(g=>g.visibility==='public'&&g.by!==me.id&&!g.del);
+  const privateRooms=[...(db.groups||[])].filter(g=>g.visibility==='private'&&g.by!==me.id&&!g.del);
   return (<div className="space-y-4">
     {created&&(
       <div className="card p-4 border-2 border-[#0A7C42] bg-green-50">
@@ -847,7 +838,10 @@ function Rooms({db,me,createGroup,delGroup,joinRoom,activeRoom,setActiveRoom,roo
         <div key={g.id} className="p-3 border-b border-gray-200 last:border-0">
           <div className="flex justify-between items-center">
             <span className="font-bold">{g.name}</span>
-            <span className={"text-xs font-bold rounded-lg px-2 py-1 "+(g.visibility==='private'?'bg-purple-100 text-purple-700':'bg-green-100 text-green-700')}>{g.visibility==='private'?'🔒 خاصة':'🌐 عام'}</span>
+            <div className="flex items-center gap-2">
+              <span className={"text-xs font-bold rounded-lg px-2 py-1 "+(g.visibility==='private'?'bg-purple-100 text-purple-700':'bg-green-100 text-green-700')}>{g.visibility==='private'?'🔒 خاصة':'🌐 عام'}</span>
+              <button onClick={()=>{ if(confirm('تحذف غرفة «'+g.name+'» نهائياً لك وللجميع؟')){ if(activeRoom===g.id) setActiveRoom(null); delGroup(g.id); } }} className="text-xs font-bold rounded-lg px-2 py-1 bg-red-100 text-red-700">🗑 حذف</button>
+            </div>
           </div>
           <p className="text-xs text-gray-500 mt-1">كلمة السر: <b className="text-[#0A7C42] text-lg tracking-wider">{g.code}</b></p>
           {g.visibility==='private'&&<p className="text-xs text-gray-400 mt-1">🔒 غرفة خاصة — أرسل كلمة السر لمن تدعوهم فقط (6 أرقام)</p>}
@@ -915,15 +909,6 @@ function Rooms({db,me,createGroup,delGroup,joinRoom,activeRoom,setActiveRoom,roo
           )}
         </div>
       )):<p className="text-gray-500">لا توجد غرف عامة بعد</p>}
-    </div>
-    <div className="card p-4">
-      <h3 className="font-bold text-xl text-[#0A7C42]">الانضمام إلى غرفة (بكلمة السر)</h3>
-      <p className="text-gray-500 text-sm mb-2">عندك كلمة سر غرفة؟ أدخلها هنا للانضمام مباشرة</p>
-      <div className="flex gap-2">
-        <input placeholder="كلمة السر (6 أرقام)" value={joinCode} onChange={e=>setJoinCode(e.target.value)} className="flex-1"/>
-        <button onClick={handleJoin} className="btn px-4 py-2 bg-[#0A7C42] text-white text-sm">انضمام</button>
-      </div>
-      {joinMsg&&<p className="text-sm text-red-600 mt-2">{joinMsg}</p>}
     </div>
     <div className="card p-4">
       <h3 className="font-bold text-xl text-[#0A7C42]">إنشاء غرفة جديدة</h3>
