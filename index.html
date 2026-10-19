@@ -385,7 +385,19 @@ function App(){
 
   /* ---- auth ---- */
   const setSession=(uid,role2)=>{ store(SESSION_KEY,JSON.stringify({uid,role:role2})); };
-  const loginStudent=(u,p)=>{ const s=db.students.find(x=>x.username===u&&x.password===p); if(!s) return 'لا يوجد حساب بهذه البيانات'; setUser({id:s.id}); setRole('stu'); setSession(s.id,'stu'); return null; };
+  const loginStudent=async(u,p)=>{
+    let s=db.students.find(x=>x.username===u&&x.password===p);
+    if(!s){
+      /* ما لقيناه محلياً — نجرّب سحب أحدث قاعدة من السحابة قبل الخطأ (حالة انقطاع نفق/كاش قديم) */
+      await resolveSync(true);
+      const c=await pullCloud();
+      if(c===null) return 'تعذر الوصول للسحابة الآن — تأكد من الإنترنت ثم أعد المحاولة';
+      if(c && ((c.syncT||0)>=(db.syncT||0))) setDb(c);
+      if(c) s=(c.students||[]).find(x=>x.username===u&&x.password===p);
+    }
+    if(!s) return 'لا يوجد حساب بهذه البيانات';
+    setUser({id:s.id}); setRole('stu'); setSession(s.id,'stu'); return null;
+  };
   const loginSupervisor=(u,p)=>{ if(u!==SUP_USER) return 'اسم المشرف غير صحيح'; if(p!==SUPERVISOR_PASS) return 'كلمة مرور المشرف غير صحيحة'; setRole('sup'); setUser({id:'SUP'}); setSession('SUP','sup'); return null; };
   const signup=(name,username,password,consent)=>{ 
     if(db.students.find(x=>x.username===username)) return 'اسم المستخدم محجوز';
@@ -505,7 +517,7 @@ function Auth({loginStudent,loginSupervisor,signup}){
           <div className="space-y-3">
             <input placeholder="اسم المستخدم" onChange={e=>setF({...f,username:e.target.value})}/>
             <input type="password" placeholder="كلمة المرور" onChange={e=>setF({...f,password:e.target.value})}/>
-            <button onClick={()=>setErr(loginStudent(f.username,f.password))} className="btn w-full py-3 bg-[#0A7C42] text-white text-lg">دخول الطالب</button>
+            <button onClick={async()=>setErr(await loginStudent(f.username,f.password))} className="btn w-full py-3 bg-[#0A7C42] text-white text-lg">دخول الطالب</button>
             <details className="text-sm text-gray-500 mt-4">
               <summary className="cursor-pointer font-bold">دخول المشرف (وليّ الأمر فقط)</summary>
               <input className="mt-2" placeholder="اسم المشرف" onChange={e=>setF({...f,sup:e.target.value})}/>
