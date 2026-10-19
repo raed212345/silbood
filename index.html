@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>سلبود — Silbood</title>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  * { font-family:'Cairo',sans-serif; }
+  body { background:#F5F7F5; color:#15201B; }
+  body[data-tp="off"] * { -webkit-tap-highlight-color: transparent; }
+  .ink { color:#15201B; }
+  .btn { border-radius:14px; font-weight:700; transition:.15s; cursor:pointer; }
+  .btn:active { transform:scale(.97); }
+  .card { background:#fff; border:1px solid #E3E9E3; border-radius:18px; }
+  input,select,textarea { background:#fff; border:1.5px solid #D7E0D8; border-radius:12px; padding:.65rem .9rem; width:100%; outline:none; }
+  input:focus,select:focus,textarea:focus { border-color:#0A7C42; }
+  ::-webkit-scrollbar{width:8px} ::-webkit-scrollbar-thumb{background:#CBD5CD;border-radius:8px}
+  .jitsi-frame { width:100%; height:100%; border:0; border-radius:12px; }
+  .expand-btn { position:absolute; top:8px; left:8px; z-index:10; background:rgba(0,0,0,0.6); color:#fff; border:none; border-radius:8px; padding:4px 8px; cursor:pointer; font-size:12px; }
+  .sidebar { transition: width 0.3s; }
+  .wb-canvas { cursor:crosshair; touch-action:none; }
+  .bottomnav { padding-bottom:env(safe-area-inset-bottom,0px); }
+
+  /* ============ Mobile responsive ============ */
+  @media (max-width:640px){
+    .jitsi-frame { border-radius:0; }
+    .btn { border-radius:12px; }
+    input,select,textarea { padding:.6rem .75rem; font-size:16px; } /* prevents iOS zoom */
+    .hide-mobile { display:none !important; }
+    .mobile-stack { flex-direction:column !important; gap:.5rem !important; }
+  }
+  /* prevent iOS input zoom */
+  @supports (-webkit-touch-callout: none) {
+    input,select,textarea { font-size:16px !important; }
+  }
+</style>
+<!-- سحابة سلبود: عنوان النفق يُحمّل من ملف ثابت (يعمل بلا CORS) -->
+<script>window.__SILBOOD_SYNC=null;</script>
+<script src="sync.js"></script>
+</head>
+<body data-tp="off">
+<div id="root"></div>
+<div id="boot" style="direction:rtl;text-align:center;padding:40px 16px;font-family:sans-serif;color:#0A7C42;font-weight:bold">🏫 جاري فتح سلبود…
+
+<script type="text/babel">
+const {useState, useEffect, useRef} = React;
+
+/* ============ ثوابت ============ */
+const RULES = {
+  SOLO_POINTS:20, GROUP_POINTS:10, DAILY_CAP:3,
+  REDEEM_POINTS:500, REDEEM_JOD:0.30,
+  MONTHLY_POOL:30, RESERVE:5,
+  BADGES:[{n:'برونزي',p:500,i:'🥉'},{n:'فضي',p:1500,i:'🥈'},{n:'ذهبي',p:3000,i:'🥇'}],
+  SPOT_CHECK_RATE:0.10, VIDEO_DELETE_HOURS:24, SCOPE:'25 طالباً — الصف التاسع فقط', MIN_PHOTOS:2,
+  SUBJECTS:['عربي','إنجليزي','رياضيات','فيزياء','كيمياء','أحياء','حاسوب','اجتماعيات','تربية إسلامية'],
+  SUPERVISOR:'رائد سلطان الجراونة',
+};
+const SUP_USER='rayed';
+const SUPERVISOR_PASS='RAED2026';
+const LS='silbood_v1';
+const pad=n=>String(n).padStart(2,'0');
+const localDate=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const today=()=>localDate(new Date());
+const monthKey=()=>{ const d=new Date(); return d.getFullYear()+'-'+pad(d.getMonth()+1); };
+const SESSION_KEY='silbood_session';
+/* ---- طبقات التخزين: localStorage ثم sessionStorage ثم الذاكرة (للإيفاد لو المتصفح مانع الحفظ) ---- */
+let MEMS={}; const FALL=new Set(); /* طبقات وقعت فيها — نقرأ منها من الذاكرة أولاً */
+const LS_OK=(()=>{ try{ localStorage.setItem('s_t','1'); localStorage.removeItem('s_t'); return true; }catch(e){ return false; } })();
+const SS_OK=(()=>{ try{ sessionStorage.setItem('s_t','1'); sessionStorage.removeItem('s_t'); return true; }catch(e){ return false; } })();
+const STORAGE_OK=LS_OK||SS_OK; /* false = كلشي بالذاكرة بس */
+const store=(k,v)=>{ if(v===undefined){ if(FALL.has(k)&&MEMS[k]!==undefined) return MEMS[k];
+  if(LS_OK){ try{ const x=localStorage.getItem(k); if(x!==null) return x; }catch(e){} }
+  if(SS_OK){ try{ const x=sessionStorage.getItem(k); if(x!==null) return x; }catch(e){} }
+  return (k in MEMS)?MEMS[k]:null; }
+  FALL.delete(k);
+  if(LS_OK){ try{ localStorage.setItem(k,v); MEMS[k]=v; return; }catch(e){} }
+  FALL.add(k);
+  if(SS_OK){ try{ sessionStorage.setItem(k,v); }catch(e){} FALL.add(k); }
+  MEMS[k]=v; };
+const storeDel=k=>{ FALL.delete(k); delete MEMS[k];
+  if(LS_OK){ try{ localStorage.removeItem(k); }catch(e){} }
+  if(SS_OK){ try{ sessionStorage.removeItem(k); }catch(e){} } };
+
+/* ---- مزامنة سحابية تجريبية: خادم المشرف عبر نفق (serveo) — العنوان من sync.json على الموقع ---- */
+const SURGE_STATIC='https://silbood-final.surge.sh';
+let SYNC_URL=store('silbood_sync')||window.__SILBOOD_SYNC||null; /* آخر عنوان نفق نجح */
+let CLOUD_OK=null;                          /* true/false/null */
+const resolveSync=async()=>{
+  /* 1) من ملف sync.js المتحمّل بالصفحة (يعمل من أي origin) */
+  if(window.__SILBOOD_SYNC){ SYNC_URL=window.__SILBOOD_SYNC; store('silbood_sync',SYNC_URL); return; }
+  /* 2) fetch نسبي (نفس الموقع) */
+  try{ const r=await fetch('sync.json'); if(r.ok){ const j=await r.json(); if(j.sync){ SYNC_URL=j.sync; store('silbood_sync',SYNC_URL); return; } } }catch(e){}
+  /* 3) من الموقع المنشور */
+  try{ const r=await fetch(SURGE_STATIC+'/sync.json?r='+Date.now()); if(r.ok){ const j=await r.json(); if(j.sync){ SYNC_URL=j.sync; store('silbood_sync',SYNC_URL); } } }catch(e){}
+};
+const cloudHasData=j=>!!j && !!(((j.students||[]).length)||((j.groups||[]).length)||((j.assignments||[]).length)||((j.pubs||[]).length)||((j.payouts||[]).length));
+const pullCloud=async()=>{ if(!SYNC_URL) return null; try{
+  const r=await fetch(SYNC_URL+'/api/db',{cache:'no-store'});
+  if(!r.ok){ CLOUD_OK=false; return null; }
+  const j=await r.json();
+  if(!j){ CLOUD_OK=false; return null; }
+  if(j.empty){ CLOUD_OK=true; return {empty:true}; }
+  if(!j.students){ CLOUD_OK=false; return null; }
+  CLOUD_OK=true; return cloudHasData(j)?j:Object.assign({},{_weak:true},j);
+}catch(e){ CLOUD_OK=false; return null; } };
+const pushCloud=async(db)=>{ if(!SYNC_URL) return false; try{
+  const payload=JSON.parse(JSON.stringify(db));
+  /* الصور لا يرسلها بالنسخة الرئيسية — تُرسل قناة منفصلة */
+  (payload.assignments||[]).forEach(a=>{ if(Array.isArray(a.photos)&&a.photos.length) a.photos={remote:true,n:a.photos.length}; });
+  const r=await fetch(SYNC_URL+'/api/db',{method:'PUT',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
+  CLOUD_OK=r.ok; return r.ok;
+}catch(e){ CLOUD_OK=false; return false; } };
+const fetchPhotos=async aid=>{ if(!SYNC_URL) return []; try{
+  const r=await fetch(SYNC_URL+'/api/photos/'+aid,{cache:'no-store'});
+  if(!r.ok) return [];
+  const j=await r.json();
+  return j.photos||[];
+}catch(e){ return []; } };
+const pushPhotos=async(aid,photos)=>{ if(!SYNC_URL||!photos||!photos.length) return false; try{
+  const r=await fetch(SYNC_URL+'/api/photos/'+aid,{method:'PUT',headers:{'Content-Type':'text/plain'},body:JSON.stringify({photos})});
+  return r.ok;
+}catch(e){ return false; } };
+/* ضغط الصور (يوفر التخزين حتى لا تنفجر السحابة/الحصص) */
+const shrinkPhoto=dataURL=>new Promise(res=>{
+  try{
+    const img=new Image();
+    img.onload=()=>{ try{
+      const max=Math.max(img.width,img.height);
+      const k=Math.min(1,700/max);
+      const c=document.createElement('canvas');
+      c.width=Math.round(img.width*k); c.height=Math.round(img.height*k);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      res(c.toDataURL('image/jpeg',0.55));
+    }catch(e){ res(dataURL); } };
+    img.onerror=()=>res(dataURL);
+    img.src=dataURL;
+  }catch(e){ res(dataURL); }
+});
+const getSession=()=>{ try{ const s=JSON.parse(store(SESSION_KEY)); return (s&&s.uid&&s.role)?s:null; }catch(e){ return null; } };
+const jod=n=>n.toFixed(2).replace('.',',')+' د.أ';
+const fmt=t=>new Date(t).toLocaleDateString('ar-JO',{day:'numeric',month:'short'})+' '+new Date(t).toLocaleTimeString('ar-JO',{hour:'2-digit',minute:'2-digit'});
+/* كلمة سر الغرفة: 6 أرقام فقط */
+const genCode=()=>String(Math.floor(100000+Math.random()*900000));
+
+/* ============ البيانات ============ */
+const seed=()=>({
+  students:[],assignments:[],groups:[],history:[],payouts:[],pubs:[],
+  pool:{month:monthKey(),remaining:RULES.MONTHLY_POOL},
+  supervisor:{id:'SUP',name:RULES.SUPERVISOR}
+});
+const load=()=>{ try{ const d=JSON.parse(store(LS)); if(d&&d.students) return d; }catch(e){} const s=seed(); store(LS,JSON.stringify(s)); return s; };
+const save=d=>store(LS,JSON.stringify(d));
+
+const INITIAL=(()=>{ let d=load(); let ch=false;
+  if(!d.pubs){ d.pubs=[]; ch=true; }
+  if(d.supervisor.name!==RULES.SUPERVISOR){ d.supervisor={id:'SUP',name:RULES.SUPERVISOR}; ch=true; }
+  /* توحيد كلمات سر الغرف: 6 أرقام فقط */
+  (d.groups||[]).forEach(g=>{ if(!/^[0-9]{6}$/.test(g.code||'')){ g.code=genCode(); ch=true; } });
+  if(ch) store(LS,JSON.stringify(d));
+  return d;
+})();
+
+/* ============ Jitsi Room (نافذة خارجية — الخوادم العامة تمنع الإطارات) ============ */
+function JitsiRoom({roomName, displayName, expanded, onToggleExpand}){
+  const [opened,setOpened]=useState(false);
+  const url='https://meet.ffmuc.net/'+encodeURIComponent(roomName)+
+    '#userInfo.displayName='+encodeURIComponent('"'+displayName+'"')+
+    '&config.prejoinPageEnabled=false&config.startWithAudioMuted=false&config.startWithVideoMuted=false&config.disableDeepLinking=true&config.enableWelcomePage=false';
+  const openWin=()=>{
+    const w=window.open(url,'_blank');
+    if(!w){ try{ location.href=url; }catch(e){} }
+    setOpened(true);
+  };
+  return (
+    <div className="bg-[#15201B] text-white rounded-2xl p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+          <span className="text-sm font-bold">غرفة: {roomName}</span>
+        </div>
+        {expanded ? (
+          <button onClick={onToggleExpand} className="bg-red-600 hover:bg-red-700 text-white rounded-lg px-3 py-1 text-xs font-bold transition">✕ إغلاق</button>
+        ):null}
+      </div>
+      <button onClick={openWin} className="btn block w-full mt-3 py-3 bg-[#0A7C42] text-white text-base">📞 فتح المكالمة (صوت + فيديو)</button>
+      <p className="text-xs text-white/60 mt-2 text-center">
+        {opened? '✓ انفتحت النافذة — إذا مو ظاهرة، اضغط زر الفتح مرة ثانية وسمح للنوافذ المنبثقة' : 'تنفتح بنافذة جديدة — اسمح بالكاميرا والمايك عند الدخول'}
+      </p>
+    </div>
+  );
+}
+
+/* ============ Whiteboard Component ============ */
+function Whiteboard({notes, setNotes}){
+  const canvasRef = useRef(null);
+  const [drawing, setDrawing] = useState(false);
+  const [color, setColor] = useState('#0A7C42');
+  const [brushSize, setBrushSize] = useState(3);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }, []);
+
+  const startDraw = (e) => {
+    setDrawing(true);
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX || e.touches?.[0]?.clientX) - rect.left;
+    const y = (e.clientY || e.touches?.[0]?.clientY) - rect.top;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const draw = (e) => {
+    if (!drawing) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX || e.touches?.[0]?.clientX) - rect.left;
+    const y = (e.clientY || e.touches?.[0]?.clientY) - rect.top;
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = brushSize;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  };
+
+  const stopDraw = () => setDrawing(false);
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2 items-center">
+        <span className="text-sm font-bold text-gray-600">اللون:</span>
+        {['#0A7C42','#E74C3C','#3498DB','#F39C12','#2C3E50','#000'].map(c => (
+          <button key={c} onClick={() => setColor(c)} className={"w-6 h-6 rounded-full border-2 " + (color===c?'border-gray-800':'border-gray-300')} style={{background:c}} />
+        ))}
+        <span className="text-sm font-bold text-gray-600 mr-2">الحجم:</span>
+        {[2,4,8].map(s => (
+          <button key={s} onClick={() => setBrushSize(s)} className={"px-2 py-1 rounded text-xs " + (brushSize===s?'bg-[#0A7C42] text-white':'bg-gray-100 text-gray-500')}>{s}</button>
+        ))}
+        <button onClick={clearCanvas} className="btn px-3 py-1 bg-red-100 text-red-700 text-xs">مسح</button>
+      </div>
+      <canvas
+        ref={canvasRef}
+        className="wb-canvas w-full border border-gray-200 rounded-xl bg-white"
+        style={{height:'200px'}}
+        onMouseDown={startDraw}
+        onMouseMove={draw}
+        onMouseUp={stopDraw}
+        onMouseLeave={stopDraw}
+        onTouchStart={startDraw}
+        onTouchMove={draw}
+        onTouchEnd={stopDraw}
+      />
+      <div>
+        <label className="text-sm font-bold text-gray-600">ملاحظات:</label>
+        <textarea
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+          placeholder="اكتب ملاحظاتك هنا..."
+          className="mt-1"
+          rows={3}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ============ App ============ */
+function App(){
+  const sess0=getSession();
+  const [db,setDb]=useState(INITIAL);
+  const [user,setUser]=useState(sess0?{id:sess0.uid}:null);
+  const [role,setRole]=useState(sess0?sess0.role:null);
+  const [roomExpanded, setRoomExpanded] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [activeRoom, setActiveRoom] = useState(null);
+
+  const dbRef=useRef(db); dbRef.current=db;
+  const [cloudState, setCloudState]=useState('...'); /* '...' | 'ok' | 'off' | 'local' */
+  const pushRefT=useRef(null);
+  const schedulePush=d=>{
+    if(pushRefT.current) clearTimeout(pushRefT.current);
+    pushRefT.current=setTimeout(()=>{ pushCloud(d).then(ok=>setCloudState(ok?'ok':'off')); },800);
+  };
+  /* تسوية سحابة: تبنّي الأحدث فقط، وزرع بياناتنا لو السحابة فاضية */
+  const adoptCloud=c=>{
+    if(c===null){
+      setCloudState('local');
+      return;
+    }
+    if(c && c.empty){ schedulePush(dbRef.current); setCloudState('ok'); return; }
+    if(c && c._weak){ schedulePush(dbRef.current); setCloudState('ok'); return; }
+    if(c){ setCloudState('ok'); if(cloudHasData(c) && (c.syncT||0)>=(dbRef.current.syncT||0)) setDb(c); }
+  };
+
+  useEffect(()=>{
+    let dead=false;
+    (async()=>{
+      await resolveSync();
+      const c=await pullCloud();
+      if(dead) return;
+      adoptCloud(c);
+    })();
+    return ()=>{ dead=true; };
+  },[]);
+
+  useEffect(()=>{ save(db); schedulePush(db); },[db]);
+
+  useEffect(()=>{
+    const t=setInterval(()=>{ if(document.visibilityState==='visible' && SYNC_URL){ pullCloud().then(adoptCloud); } },45000);
+    return ()=>clearInterval(t);
+  },[]);
+
+  useEffect(()=>{
+    const sync=()=>{
+      const fresh=load();
+      setDb(prev=>{
+        try{ if(JSON.stringify(prev)===JSON.stringify(fresh)) return prev; }catch(e){}
+        return fresh;
+      });
+    };
+    /* + سحب من السحابة عند رجوع التركيز/الظهور */
+    const syncAll=()=>{
+      sync();
+      if(SYNC_URL){ pullCloud().then(adoptCloud); }
+    };
+    window.addEventListener('storage', syncAll);
+    window.addEventListener('focus', syncAll);
+    window.addEventListener('visibilitychange', syncAll);
+    return ()=>{ window.removeEventListener('storage', syncAll); window.removeEventListener('focus', syncAll); window.removeEventListener('visibilitychange', syncAll); };
+  },[]);
+
+  const me=user && (role==='sup'?db.supervisor:db.students.find(s=>s.id===user.id));
+  const upd=fn=>setDb(d=>{
+    let base=d;
+    try{
+      const fresh=JSON.parse(store(LS));
+      if(fresh && JSON.stringify(fresh)!==JSON.stringify(d)) base=fresh;
+    }catch(e){}
+    fn(base); return {...base, syncT:Date.now()};
+  });
+
+  /* ---- auth ---- */
+  const setSession=(uid,role2)=>{ store(SESSION_KEY,JSON.stringify({uid,role:role2})); };
+  const loginStudent=(u,p)=>{ const s=db.students.find(x=>x.username===u&&x.password===p); if(!s) return 'لا يوجد حساب بهذه البيانات'; setUser({id:s.id}); setRole('stu'); setSession(s.id,'stu'); return null; };
+  const loginSupervisor=(u,p)=>{ if(u!==SUP_USER) return 'اسم المشرف غير صحيح'; if(p!==SUPERVISOR_PASS) return 'كلمة مرور المشرف غير صحيحة'; setRole('sup'); setUser({id:'SUP'}); setSession('SUP','sup'); return null; };
+  const signup=(name,username,password,consent)=>{ 
+    if(db.students.find(x=>x.username===username)) return 'اسم المستخدم محجوز';
+    if(!consent) return 'لازم موافقة ولي الأمر والموافقة على الشروط';
+    let pok=null; try{ pok=JSON.parse(store('silbood_parent_ok')); }catch(e){}
+    if(!pok||!pok.name) return 'لازم توقيع ولي الأمر: افتح "📜 الشروط — لولي الأمر" وأجب "نعم" على كل الأسئلة ووقّع';
+    if(Date.now()-pok.ts > 7*864e5) return 'انتهت صلاحية توقيع ولي الأمر — أعاد توقيع الشروط';
+    const s={id:'S'+Date.now(),name,username,password,points:0,createdAt:Date.now(),streak:0,lastDay:null,parent:pok.name};
+    upd(d=>d.students.push(s)); setUser({id:s.id}); setRole('stu'); setSession(s.id,'stu'); return null;
+  };
+  const logout=()=>{ storeDel(SESSION_KEY); setDb(load()); setUser(null); setRole(null); setActiveRoom(null); setRoomExpanded(false); setSidebarOpen(false); };
+
+  /* ---- streak ---- */
+  const bumpStreak=(d,sid)=>{ const s=d.students.find(x=>x.id===sid); const t=today();
+    if(s.lastDay!==t){ s.streak = (s.lastDay===localDate(new Date(Date.now()-864e5))) ? s.streak+1 : 1; s.lastDay=t; }
+  };
+
+  /* ---- assignment ---- */
+  const todayCount=(d,sid)=>d.assignments.filter(a=>a.sid===sid&&a.day===today()&&a.status!=='rejected').length;
+  const submit=(sid,{subject,title,type,groupId,pubId,photos})=>{
+    if(!Array.isArray(photos)||photos.length<RULES.MIN_PHOTOS) return 'لازم تتوفر '+RULES.MIN_PHOTOS+' صور على الأقل لحلّك';
+    if(new Set(photos).size!==photos.length) return 'في صور مكررة — بدّل الصور المتشابهة';
+    let msg=null;
+    const aid='A'+Date.now()+Math.floor(Math.random()*99);
+    upd(d=>{
+      if(todayCount(d,sid)>=RULES.DAILY_CAP){ msg='خلصت حدك اليومي ('+RULES.DAILY_CAP+' واجبات) — رجوع بكرة 💪'; return; }
+      const spot = Math.random()<RULES.SPOT_CHECK_RATE;
+      const g=type==='group'? d.groups.find(x=>x.id===groupId):null;
+      const a={id:aid,sid,subject,title,type,groupId,pubId:pubId||null,
+        photos,status:spot?'awaiting':'pending',points:type==='group'?RULES.GROUP_POINTS:RULES.SOLO_POINTS,day:today(),ts:Date.now(),ed:Date.now(),
+        room:g?g.room:null};
+      d.assignments.push(a);
+      d.history.push({t:Date.now(),sid,type:'submit',note:(type==='group'?'واجب جماعي':'واجب فردي')+' — '+subject+' (مع '+photos.length+' صور)',pts:0});
+    });
+    if(!msg){ pushPhotos(aid,photos); }   /* قناة الصور للسحابة */
+    return msg;
+  };
+
+  /* ---- supervisor actions ---- */
+  const approve=(aid)=>upd(d=>{ const a=d.assignments.find(x=>x.id===aid); if(!a||a.status!=='pending')return;
+    a.status='approved'; a.ed=Date.now(); const s=d.students.find(x=>x.id===a.sid); s.points+=a.points; s.ed=Date.now(); bumpStreak(d,a.sid);
+    d.history.push({t:Date.now(),sid:a.sid,type:'approve',note:(a.type==='group'?'جماعي':'فردي')+' — '+a.subject,pts:a.points});
+  });
+  const reject=(aid,why)=>upd(d=>{ const a=d.assignments.find(x=>x.id===aid); if(!a)return; a.status='rejected'; a.why=why||''; a.ed=Date.now();
+    d.history.push({t:Date.now(),sid:a.sid,type:'reject',note:'رُفض — '+(why||'قرار المشرف'),pts:0});
+  });
+  const setPool=n=>upd(d=>{ d.pool={month:monthKey(),remaining:n}; });
+
+  /* ---- payout ---- */
+  const redeem=(sid)=>{ let m=null; upd(d=>{
+      const s=d.students.find(x=>x.id===sid); if(s.points<RULES.REDEEM_POINTS){ m='ناقصك '+(RULES.REDEEM_POINTS-s.points)+' نقطة للاستبدال'; return; }
+      if(d.pool.month!==monthKey()) d.pool={month:monthKey(),remaining:RULES.MONTHLY_POOL};
+      s.points-=RULES.REDEEM_POINTS; s.ed=Date.now();
+      const paid=d.pool.remaining>=RULES.REDEEM_JOD;
+      if(paid) d.pool.remaining=+(d.pool.remaining-RULES.REDEEM_JOD).toFixed(2);
+      d.payouts.push({id:'P'+Date.now(),sid,day:today(),status:paid?'جاهز للاستلام من المشرف':'قائمة الانتظار — أول الشهر القادم',paid,ed:Date.now()});
+      d.history.push({t:Date.now(),sid,type:'redeem',note:paid?'استبدال 500 نقطة → 30 قرشاً (من الصندوق)':'استبدال 500 نقطة → مُدرج بقائمة الانتظار',pts:-RULES.REDEEM_POINTS});
+    }); return m; };
+  const markPaid=pid=>upd(d=>{ const p=d.payouts.find(x=>x.id===pid); if(p)p.status='تمّ تسليمه ✓'; });
+
+  /* ---- groups ---- */
+  const createGroup=(name,sid,opts)=>{ const g={id:'G'+Date.now(),name,room:'Silbood-'+Math.random().toString(36).slice(2,8),by:sid,ts:Date.now(),
+    visibility:(opts&&opts.visibility)||'public',invited:(opts&&opts.invited)||[],code:genCode(),ed:Date.now()}; upd(d=>d.groups.unshift(g)); return g; };
+  const delGroup=gid=>upd(d=>{ d.groups=d.groups.filter(g=>g.id!==gid); });
+  const joinRoom=(code,meId)=>{ let msg=null; upd(d=>{
+    const g=d.groups.find(x=>x.code.toLowerCase()===code.toLowerCase().trim());
+    if(!g){ msg='كلمة السر غير صحيحة'; return; }
+    if(g.visibility==='private' && g.by!==meId && !(g.invited||[]).includes(meId)){
+      g.invited=[...(g.invited||[]), meId];
+      msg='تم انضمامك إلى غرفة: '+g.name+' (خاصة)';
+    } else {
+      msg='تم انضمامك إلى غرفة: '+g.name;
+    }
+  }); return msg; };
+
+  /* ---- دخول غرفة بالرمز فقط (بدون رابط) ---- */
+  const tryRoomJoin=()=>{ /* disabled - code-only joining */ };
+
+  /* ---- نشر الواجبات ---- */
+  const publish=(subject,title)=>{ if(!title.trim()) return 'اكتب عنوان الواجب'; upd(d=>d.pubs.unshift({id:'B'+Date.now()+Math.floor(Math.random()*99),subject,title:title.trim(),ts:Date.now()})); return null; };
+  const delPub=pid=>upd(d=>{ d.pubs=d.pubs.filter(p=>p.id!==pid); });
+
+  /* ---- leaderboard ---- */
+  const board=[...db.students].sort((a,b)=>b.points-a.points);
+  const badge=pts=>{ let b=RULES.BADGES[0]; RULES.BADGES.forEach(x=>{if(pts>=x.p)b=x}); return b; };
+
+  const banner=!STORAGE_OK&&(
+    <div className="bg-yellow-100 border-b-2 border-yellow-400 text-yellow-900 text-xs font-bold text-center px-3 py-2">⚠️ المتصفح مانع حفظ البيانات — كل شي يختفي إذا سكّر الصفحة. افتح الموقع بمتصفح متل Chrome أو من الرابط العام https://silbood-final.surge.sh</div>
+  );
+  const cloud=(<span className="ml-2 text-[10px] font-bold rounded-full px-2 py-0.5 bg-white/15">☁️ {cloudState==='ok'?'متزامن':(cloudState==='off'?'متوقّف':(cloudState==='local'?'محلي فقط':'...'))}</span>);
+  if(!user) return <>{banner}<Auth loginStudent={loginStudent} loginSupervisor={loginSupervisor} signup={signup}/></>;
+  if(role==='sup') return <>{banner}<Sup db={db} approve={approve} reject={reject} setPool={setPool} markPaid={markPaid} publish={publish} delPub={delPub} logout={logout} cloud={cloud}/></>;
+  return <>{banner}<Student db={db} me={me} submit={submit} redeem={redeem} createGroup={createGroup} delGroup={delGroup} joinRoom={joinRoom} board={board} badge={badge} logout={logout} activeRoom={activeRoom} setActiveRoom={setActiveRoom} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} notes={notes} setNotes={setNotes} roomExpanded={roomExpanded} setRoomExpanded={setRoomExpanded} cloud={cloud}/></>;
+}
+
+/* ================= شاشة الدخول ================= */
+function Auth({loginStudent,loginSupervisor,signup}){
+  const [tab,setTab]=useState('in');
+  const [err,setErr]=useState(null);
+  const [showT,setShowT]=useState(false);
+  const [f,setF]=useState({name:'',username:'',password:'',consent:false,sup:''});
+  return (
+  <div className="min-h-screen flex flex-col items-center justify-center p-4">
+    <div className="w-full max-w-md">
+      <div className="text-center mb-6">
+        <div className="text-6xl mb-2">🏫</div>
+        <h1 className="text-4xl font-black" style={{color:'#0A7C42'}}>سلبود</h1>
+        <p className="text-gray-500 mt-1">نقاطك لواجبك… ومصاريفك لجديتك</p>
+      </div>
+      <div className="card p-5">
+        <div className="flex gap-1 mb-4 bg-gray-100 rounded-xl p-1">
+          <button onClick={()=>setTab('in')} className={"flex-1 py-2 rounded-lg font-bold "+(tab==='in'?'bg-[#0A7C42] text-white':'text-gray-500')}>دخول</button>
+          <button onClick={()=>{setTab('up'); setShowT(true);}} className={"flex-1 py-2 rounded-lg font-bold "+(tab==='up'?'bg-[#0A7C42] text-white':'text-gray-500')}>حساب جديد</button>
+        </div>
+        {err&&<div className="mb-3 text-sm bg-red-50 text-red-700 border border-red-200 rounded-xl p-3">{err}</div>}
+        {tab==='in'?
+          <div className="space-y-3">
+            <input placeholder="اسم المستخدم" onChange={e=>setF({...f,username:e.target.value})}/>
+            <input type="password" placeholder="كلمة المرور" onChange={e=>setF({...f,password:e.target.value})}/>
+            <button onClick={()=>setErr(loginStudent(f.username,f.password))} className="btn w-full py-3 bg-[#0A7C42] text-white text-lg">دخول الطالب</button>
+            <details className="text-sm text-gray-500 mt-4">
+              <summary className="cursor-pointer font-bold">دخول المشرف (وليّ الأمر فقط)</summary>
+              <input className="mt-2" placeholder="اسم المشرف" onChange={e=>setF({...f,sup:e.target.value})}/>
+              <input className="mt-2" type="password" placeholder="كلمة مرور المشرف" onChange={e=>setF({...f,supPass:e.target.value})}/>
+              <button onClick={()=>setErr(loginSupervisor(f.sup,f.supPass))} className="btn w-full py-2 mt-2 bg-[#15201B] text-white">دخول لوحة المشرف</button>
+            </details>
+          </div>
+        :
+          <div className="space-y-3">
+            <input placeholder="اسمك الكامل" onChange={e=>setF({...f,name:e.target.value})}/>
+            <input placeholder="اسم المستخدم" onChange={e=>setF({...f,username:e.target.value})}/>
+            <input type="password" placeholder="كلمة مرور" onChange={e=>setF({...f,password:e.target.value})}/>
+            <div className="border border-orange-200 bg-orange-50 rounded-xl p-3 text-sm leading-relaxed">
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input type="checkbox" className="mt-1 w-auto" checked={f.consent} onChange={e=>setF({...f,consent:e.target.checked})}/>
+                <span className="text-gray-700">أنا ولي أمر الطالب: قرأت الشروط وأجبت بـ "نعم" على كل الأسئلة، وأوافق على مشاركة ابني/ابنتي</span>
+              </label>
+            </div>
+            <button type="button" onClick={()=>setShowT(true)} className="btn w-full py-2.5 bg-blue-600 text-white text-base">📜 الشروط — لولي الأمر</button>
+            <button onClick={()=>setErr(signup(f.name.trim(),f.username.trim(),f.password,f.consent))} className="btn w-full py-3 bg-[#0A7C42] text-white text-lg">إنشاء الحساب</button>
+          </div>
+        }
+      </div>
+      <p className="text-center text-xs text-gray-400 mt-4">المشرف المسؤول: {RULES.SUPERVISOR} • {RULES.SCOPE} • <button onClick={()=>setShowT(true)} className="underline text-[#0A7C42]">الشروط والخصوصية</button></p>
+      {showT&&<TermsModal onClose={() => setShowT(false)} />}
+    </div>
+  </div>);
+}
+
+/* ================= شروط وخصوصية — موجّهة لولي الأمر ================= */
+const PARENT_QS=[
+  {q:'هل تقبل أن يحصل ابنك على مصاري (نقاط تتحول إلى أرباح حقيقية) مقابل حل واجباته؟', d:'مثال: 500 نقطة = 30 قرشاً أردنياً — الحد الأقصى 30 ديناراً بالشهر من صندوق المشرف.'},
+  {q:'هل تقبل أن يرى المشرف صور حل ابنك (صورة أو صورتان لكل واجب)؟', d:'الصور هي دليل التسليم — يراها المشرف فقط لمراجعة الواجب، ولا تُشارك مع أي طرف ثالث.'},
+  {q:'هل تقبل مشاركة ابنك في غرف دراسية (صوت + فيديو) مع طلاب آخرين من نفس الصف؟', d:'الغرف خاصة بكلمة سر أو عامة داخل التطبيق — بيئة دراسية مراقَبة من المشرف.'},
+  {q:'هل تقبل إجراء فحص عشوائي لفيديو شرح قصير (15 ثانية) من ابنك؟', d:'الفحص عشوائي 10% فقط، ويُحذف تلقائياً خلال 24 ساعة من مراجعته.'},
+  {q:'هل تقبل احتساب الحد اليومي 3 واجبات كحد أقصى ومنح النقاط بعد اعتماد المشرف؟', d:'لا تُمنح نقاط إلا بعد مراجعة المشرف واعتماده — والحل الجماعي 10 نقاط لكل عضو.'},
+  {q:'هل تقبل حفظ بيانات ابنك على جهازه حالياً (مرحلة التجربة) ثم على سحابة آمنة لاحقاً؟', d:'لا تُشارك بيانات ابنك ولا صوره مع أي طرف ثالث في أي مرحلة.'},
+];
+function TermsModal({onClose}){
+  const [ans,setAns]=useState({});
+  const [pname,setPname]=useState('');
+  const [done,setDone]=useState(null);
+  const allYes=PARENT_QS.every((_,i)=>ans[i]===true);
+  const anyAns=Object.keys(ans).length>0;
+  const confirm=()=>{
+    if(!allYes){ alert('لازم تجاوب "نعم" على كل الأسئلة قبل التوقيع'); return; }
+    if(pname.trim().length<3){ alert('اكتب اسم ولي الأمر كاملاً'); return; }
+    store('silbood_parent_ok', JSON.stringify({name:pname.trim(),ts:Date.now()}));
+    setDone(pname.trim());
+    setTimeout(onClose,900);
+  };
+  const setA=(i,v)=>setAns(a=>({...a,[i]:v}));
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="card w-full max-w-lg max-h-[92vh] overflow-y-auto p-5" onClick={e=>e.stopPropagation()}>
+        {done&&<div className="mb-3 p-3 rounded-xl bg-green-50 border-2 border-[#0A7C42] font-bold text-[#0A7C42]">✓ تم تسجيل موافقة ولي الأمر: {done} — بإمكان الطالب استخدام التطبيق الآن</div>}
+        <div className="flex justify-between items-center mb-1">
+          <h2 className="font-black text-xl text-[#0A7C42]">📜 الشروط — إلى ولي أمر الطالب</h2>
+          <button onClick={onClose} className="btn text-gray-400 text-xl">✕</button>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">اقرأ الأسئلة التالية برجاءة وأجب عن كل سؤال قبل توقيع الموافقة</p>
+
+        {/* أسئلة ولي الأمر */}
+        <div className="space-y-3 mb-5">
+          {PARENT_QS.map((item,i)=>(
+            <div key={i} className="border border-gray-200 rounded-xl p-3 bg-gray-50">
+              <div className="flex justify-between items-start gap-3">
+                <p className="font-bold text-sm text-[#15201B] leading-relaxed"><span className="text-[#0A7C42]">{i+1}.</span> {item.q}</p>
+                <div className="flex gap-1 flex-shrink-0">
+                  <button onClick={()=>setA(i,true)} className={"btn px-3 py-1 text-xs font-bold "+(ans[i]===true?'bg-[#0A7C42] text-white':'bg-white text-gray-400 border border-gray-200')}>نعم</button>
+                  <button onClick={()=>setA(i,false)} className={"btn px-3 py-1 text-xs font-bold "+(ans[i]===false?'bg-red-600 text-white':'bg-white text-gray-400 border border-gray-200')}>لا</button>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">{item.d}</p>
+              {ans[i]===false&&<p className="text-xs text-red-600 font-bold mt-1">⚠️ برفضك هذا البند لا يمكن للطالب المشاركة في هذا النظام</p>}
+            </div>
+          ))}
+        </div>
+
+        {/* توقيع ولي الأمر */}
+        <div className="bg-[#0A7C42]/5 border-2 border-[#0A7C42]/30 rounded-xl p-4">
+          <h3 className="font-bold text-[#0A7C42] mb-2">✍️ توقيع ولي الأمر</h3>
+          <p className="text-xs text-gray-600 mb-3">أقر أنا الموقع أدناه بقرأت كل ما سبق، وأوافق على مشاركة ابنك في تطبيق سلبود بالكامل (المصاري، الصور، الغرف، الفحص العشوائي، وحفظ البيانات).</p>
+          <input placeholder="اسم ولي الأمر (كاملاً)" value={pname} onChange={e=>setPname(e.target.value)} className="text-sm"/>
+          <div className="flex items-center justify-between mt-3">
+            <span className="text-xs text-gray-500">{anyAns?(allYes?'✓ أجبت "نعم" على كل الأسئلة':'✗ في إجابات "لا"'):'لم تُجب بعد'}</span>
+            <button onClick={confirm} disabled={!allYes||pname.trim().length<3} className="btn px-5 py-2 bg-[#0A7C42] text-white text-sm disabled:opacity-40">توقيع الموافقة ✓</button>
+          </div>
+        </div>
+
+        {/* الشروط الكاملة */}
+        <div className="space-y-4 text-sm leading-relaxed text-gray-700 mt-5">
+          <section>
+            <h3 className="font-bold text-[#15201B]">🔒 الخصوصية</h3>
+            <ul className="list-disc pr-5 space-y-1">
+              <li>صور الحل (2 على الأقل) هي دليل تسليم واجب — يراها فقط المشرف (ولي الأمر) لغرض المراجعة.</li>
+              <li>فيديوهات المراجعة العشوائية (10%) تُحذف تلقائياً بعد 24 ساعة من مراجعتها.</li>
+              <li>لا تُشارك بيانات الطالب ولا صوره مع أي طرف ثالث.</li>
+              <li>في هذه المرحلة (تجربة) البيانات تُحفظ على جهازه؛ في المرحلة الثانية (Supabase) تُحفظ بسحابة آمنة.</li>
+            </ul>
+          </section>
+          <section>
+            <h3 className="font-bold text-[#15201B]">📜 شروط الاستخدام (18 شرطاً)</h3>
+            <ol className="list-decimal pr-5 space-y-1">
+              <li>المشرف (ولي الأمر) هو مالك البيانات ومراجعها (data controller).</li>
+              <li>المشرف يضمن صرف المكافآت (حتى 30 دينار/شهر) — صندوق شهري + احتياط 5 دنانير.</li>
+              <li>إذا فرغ الصندوق، صرف الاستبدال يُؤجل إلى أول الشهر القادم (نقاطك لا تنتهي).</li>
+              <li>المشرف يراجع ويعتمد/يرفض كل واجب — لا تُمنح نقاط بدون موافقته.</li>
+              <li>الحل فردي = 20 نقطة، جماعي = 10 نقاط (كل عضو يرفق صورته).</li>
+              <li>الحد الأقصى 3 واجبات باليوم.</li>
+              <li>500 نقطة = 30 قرشاً أردنياً.</li>
+              <li>500/1500/3000 نقطة = أوسمة برونزي/فضي/ذهبي.</li>
+              <li>فحص عشوائي 10%: شرح 15 ثانية (فيديو) — يُحذف بعد 24 ساعة.</li>
+              <li>الغرف: عام (الكل) أو خاص (بكلمة سر يعرفها المالك فقط) — المالك يتحكم.</li>
+              <li>النطاق: 25 طالباً — الصف التاسع فقط.</li>
+              <li>التجربة: 5 طلاب × أسبوع (3 من 5 يعودون = نجاح).</li>
+              <li>موافقة ولي الأمر مطلوبة لكل طالب (توقيع هنا أو ورقة موقعة).</li>
+              <li>المشرف يملك "قوة الإيقاف" (pause) في أي وقت.</li>
+              <li>المشرف يراجع الاعتراضات (appeals).</li>
+              <li>الامتحانات (40-50 نقطة، كاميرا + AI) مؤجلة للمرحلة (2) — غير مفعّلة في التجربة.</li>
+              <li>لا يوجد نموذج إيرادات حالياً — التمويل (1 دينار/يوم) من المؤسس.</li>
+              <li>التمويل (1 دينار/يوم ≈ 30 دينار/شهر) من المؤسس (ولي الأمر).</li>
+            </ol>
+          </section>
+          <section>
+            <h3 className="font-bold text-[#15201B]">✍️ التوقيع (ولي الأمر)</h3>
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+              <p className="font-bold">المشرف (ولي الأمر): رائد سلطان الجراونة</p>
+              <p className="text-xs text-gray-500">وقّع على 18 شرطاً • التوقيع (على الورقة المحفوظة) • النطاق: 25 طالباً (الصف التاسع)</p>
+              <p className="text-xs text-gray-400 mt-1">ملاحظة: صورة التوقيع (مع الأرقام) محفوظة offline — لا تُنشر على الموقع حفاظاً على الخصوصية.</p>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ================= الطالب ================= */
+function Student({db,me,submit,redeem,createGroup,delGroup,joinRoom,board,badge,logout,activeRoom,setActiveRoom,sidebarOpen,setSidebarOpen,notes,setNotes,roomExpanded,setRoomExpanded,cloud}){
+  const [tab,setTab]=useState('home');
+  const [showT,setShowT]=useState(false);
+  const t=today();
+  const todayN=db.assignments.filter(a=>a.sid===me.id&&a.day===t&&a.status!=='rejected').length;
+  const pending=db.assignments.filter(a=>a.sid===me.id&&['pending','awaiting'].includes(a.status));
+  const myBadge=badge(me.points);
+  const tabs=[['home','الرئيسية','🏠'],['solve','الواجبات','✍️'],['rooms','الغرف','👥'],['board','المتصدرون','🏆'],['me','نقاطي','💰']];
+  const myRooms=[...(db.groups||[])].filter(g=>g.by===me.id);
+  return (
+    <div className="max-w-6xl mx-auto pb-24 flex gap-4">
+      {/* Sidebar — يشتغل فقط وقت الفل سكرين بالغرفة */}
+      {roomExpanded && sidebarOpen && (
+        <div className="fixed right-0 top-0 bottom-0 w-80 max-w-[85vw] z-[60] bg-[#F5F7F5] shadow-2xl overflow-y-auto p-3 space-y-4" style={{borderLeft:'1px solid #E3E9E3'}}>
+          <div className="card p-4">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-bold text-lg text-[#0A7C42]">ملاحظات + Whiteboard</h3>
+              <button onClick={() => setSidebarOpen(false)} className="text-gray-400 text-xl">✕</button>
+            </div>
+            <Whiteboard notes={notes} setNotes={setNotes} />
+          </div>
+        </div>
+      )}
+      {roomExpanded && !sidebarOpen && (
+        <button onClick={() => setSidebarOpen(true)} className="fixed left-4 top-16 z-[60] btn bg-[#0A7C42] text-white px-3 py-2 text-sm shadow-lg">📋 ملاحظات</button>
+      )}
+
+      {/* Main content */}
+      <div className="flex-1 min-w-0">
+        <div className="bg-[#0A7C42] text-white px-4 pt-5 pb-16 rounded-b-3xl">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">🏫</span><span className="font-black text-xl">سلبود</span>{cloud}
+            </div>
+            <button onClick={logout} className="text-white/70 text-sm btn px-3 py-1 border border-white/30">خروج</button>
+          </div>
+          <p className="mt-4 text-white/80">أهلاً يا {me.name.split(' ')[0]}</p>
+          <div className="mt-1 flex items-end gap-2">
+            <span className="text-3xl sm:text-5xl font-black">{me.points}</span>
+            <span className="mb-1 sm:mb-2 text-white/90 font-bold text-sm sm:text-base">نقطة مؤكدة</span>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <span className="bg-white/15 rounded-full px-3 py-1 text">🔥 سترِيك {me.streak} يوم</span>
+            <span className="bg-white/15 rounded-full px-3 py-1">{myBadge.i} {myBadge.n}</span>
+          </div>
+        </div>
+
+        <div className="px-4 -mt-10">
+          {tab==='home'&&<Home db={db} me={me} pending={pending} todayN={todayN} redeem={redeem} setTab={setTab}/>}
+          {tab==='solve'&&<Solve db={db} me={me} submit={submit} todayN={todayN} setTab={setTab}/>}
+          {tab==='rooms'&&<Rooms db={db} me={me} createGroup={createGroup} delGroup={delGroup} joinRoom={joinRoom} activeRoom={activeRoom} setActiveRoom={setActiveRoom} roomExpanded={roomExpanded} setRoomExpanded={setRoomExpanded}/>}
+          {tab==='board'&&<Board board={board} meId={me.id}/>}
+          {tab==='me'&&<Points db={db} me={me} redeem={redeem}/>}
+          <p className="text-center text-xs text-gray-400 mt-6 mb-16"><button onClick={()=>setShowT(true)} className="underline text-[#0A7C42]">الشروط والخصوصية • توقيع ولي الأمر</button></p>
+          {showT&&<TermsModal onClose={() => setShowT(false)} />}
+        </div>
+
+        <div className="fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 flex justify-around py-2 max-w-lg mx-auto px-1 bottomnav">
+          {tabs.map(([k,l,i])=>(
+            <button key={k} onClick={()=>setTab(k)} className={"flex flex-col items-center px-1.5 sm:px-3 py-1 rounded-xl btn text-[10px] sm:text-xs "+(tab===k?'text-[#0A7C42] font-black':'text-gray-400')}>{i}<span>{l}</span></button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Home({db,me,pending,todayN,redeem,setTab}){
+  return (<div className="space-y-4">
+    <div className="card p-4">
+      <p className="font-bold mb-2">وضعيت اليوم</p>
+      <div className="flex gap-3 text-sm">
+        <div className="flex-1 bg-gray-50 rounded-xl p-3 text-center"><div className="text-2xl font-black">{todayN}/{RULES.DAILY_CAP}</div><div className="text-gray-500">واجبات اليوم</div></div>
+        <div className="flex-1 bg-gray-50 rounded-xl p-3 text-center"><div className="text-2xl font-black">{pending.length}</div><div className="text-gray-500">بانتظار المشرف</div></div>
+      </div>
+    </div>
+    <div className="card p-4">
+      <p className="font-bold mb-2">الصندوق هذا الشهر</p>
+      <div className="flex justify-between text-sm text-gray-600 mb-1"><span>المتبقي للصرف الفوري</span><b>{jod(db.pool.remaining)}</b></div>
+      <div className="h-3 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-[#0A7C42]" style={{width:(db.pool.remaining/RULES.MONTHLY_POOL*100)+'%'}}/></div>
+      {me.points>=RULES.REDEEM_POINTS&&
+        <button onClick={()=>alert(redeem(me.id)||'تم الاستبدال')} className="btn mt-3 w-full py-3 bg-[#C9992E] text-white">استبدل 500 نقطة → 30 قرشاً</button>}
+    </div>
+    <div className="grid grid-cols-2 gap-3">
+      <button onClick={()=>setTab('solve')} className="card p-4 text-right btn"><span className="text-2xl">✍️</span><p className="font-bold mt-1">حل واجب</p><p className="text-xs text-gray-500">+20 نقطة (فردي)</p></button>
+      <button onClick={()=>setTab('rooms')} className="card p-4 text-right btn"><span className="text-2xl">👥</span><p className="font-bold mt-1">غرفة جماعية</p><p className="text-xs text-gray-500">+10 لكل مجموعة</p></button>
+    </div>
+    {db.history.filter(h=>h.sid===me.id).slice(-5).reverse().map((h,i)=>(
+      <div key={i} className="card px-4 py-2.5 flex justify-between items-center text-sm">
+        <span>{h.note}</span>
+        <span className={h.pts>0?'text-[#0A7C42] font-bold':h.pts<0?'text-red-600 font-bold':'text-gray-400'}>{h.pts>0?'+'+h.pts:h.pts<0?h.pts:''}</span>
+      </div>
+    ))}
+  </div>);
+}
+
+function Solve({db,me,submit,todayN,setTab}){
+  const [err,setErr]=useState(null);
+  const [phFor,setPhFor]=useState(null);
+  const [photos,setPhotos]=useState([]);
+  const blocked=todayN>=RULES.DAILY_CAP;
+  const pubs=[...(db.pubs||[])].reverse();
+  const doneToday=ids=>{ const t=today(); return db.assignments.some(a=>a.sid===me.id&&a.day===t&&a.pubId===ids&&a.status!=='rejected'); };
+  const doSubmit=(pf)=>{
+    const m=submit(me.id,{subject:pf.pub.subject,title:pf.pub.title,type:pf.type,groupId:pf.groupId||'',pubId:pf.pub.id,photos});
+    if(m)setErr(m); else {setErr(null); setPhFor(null); setPhotos([]);}
+  };
+  return (<div className="space-y-4 mt-2">
+    {err&&<div className="text-sm bg-red-50 text-red-700 border border-red-200 rounded-xl p-3">{err}</div>}
+    {blocked&&<div className="text-center card py-8"><div className="text-4xl mb-2">🛑</div><p className="font-bold">خلصت حدك اليومي</p><p className="text-gray-500 text-sm">القانون: {RULES.DAILY_CAP} واجبات باليوم كحد أقصى — رجوع بكرة</p></div>}
+    {!pubs.length&&<p className="text-center text-gray-400 py-8 card">ما في واجبات منشورة بعد — المشرف بينشر أول واجب قريب 📢</p>}
+    {pubs.map(pub=>{
+      const solved=doneToday(pub.id);
+      return (
+      <div key={pub.id} className="card p-4">
+        <div className="flex justify-between items-start">
+          <div>
+            <p className="font-bold">{pub.subject} — {pub.title}</p>
+            <p className="text-xs text-gray-400">نُشر بواسطة المشرف • {fmt(pub.ts)}</p>
+          </div>
+          <span className="text-xs bg-[#0A7C42]/10 text-[#0A7C42] font-bold rounded-lg px-2 py-1">📢 منشور</span>
+        </div>
+        {!blocked&&!solved&&
+          <button onClick={()=>setPhFor({pub,type:'solo'})} className="btn mt-3 w-full py-2 bg-[#0A7C42] text-white text-sm">حل الواجب (رفع 2+ صور)</button>}
+        {blocked&&<p className="text-xs text-gray-500 mt-1">لقد تجاوزت الحد اليومي</p>}
+      </div>
+    )})}
+    {phFor&&<div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={()=>setPhFor(null)}>
+      <div className="card w-full max-w-lg p-4" onClick={e=>e.stopPropagation()}>
+        <h3 className="font-bold text-xl text-[#0A7C42]">رفع صورة الحل</h3>
+        <p className="text-gray-500 mb-4">حد أدنى {RULES.MIN_PHOTOS} صور لكل واجب</p>
+        <input type="file" accept="image/*" multiple onChange={e=>{
+          const files=Array.from(e.target.files||[]);
+          if(files.length<RULES.MIN_PHOTOS){ setErr('لازم ترفع صورتين على الأقل'); return; }
+          const readers=files.map(f=>new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(f); }));
+          Promise.all(readers).then(results=>Promise.all(results.map(shrinkPhoto))).then(results=>{ setPhotos(results); setErr(null); });
+        }}/>
+        {photos.length>0&&<p className="text-sm text-green-600 mt-2">✓ تم رفع {photos.length} صورة</p>}
+        <div className="flex gap-2 mt-4">
+          <button onClick={()=>setPhFor(null)} className="btn flex-1 py-2 bg-gray-200 text-gray-700">إلغاء</button>
+          <button onClick={()=>doSubmit(phFor)} disabled={photos.length<RULES.MIN_PHOTOS} className="btn flex-1 py-2 bg-[#0A7C42] text-white disabled:opacity-50">إرسال الحل</button>
+        </div>
+      </div>
+    </div>}
+  </div>);
+}
+
+function Rooms({db,me,createGroup,delGroup,joinRoom,activeRoom,setActiveRoom,roomExpanded,setRoomExpanded}){
+  const [showCreate,setShowCreate]=useState(false);
+  const [name,setName]=useState('');
+  const [vis,setVis]=useState('public');
+  const [joinCode,setJoinCode]=useState('');
+  const [joinMsg,setJoinMsg]=useState(null);
+  const [pwRoom,setPwRoom]=useState(null); /* الغرفة المطلوب إدخول كلمة سرها */
+  const [pwVal,setPwVal]=useState('');
+  const [created,setCreated]=useState(null); /* غرفة أُنشئت الآن — نعرضها على الصفحة */
+  const [copied,setCopied]=useState(false);
+  const myRooms=[...(db.groups||[])].filter(g=>g.by===me.id);
+  const publicRooms=[...(db.groups||[])].filter(g=>g.visibility==='public'&&g.by!==me.id);
+  const privateRooms=[...(db.groups||[])].filter(g=>g.visibility==='private'&&g.by!==me.id);
+  const handleJoin=()=>{
+    const code=joinCode.trim();
+    if(!code){ setJoinMsg('أدخل كلمة السر'); return; }
+    const msg=joinRoom(code,me.id);
+    if(msg){ alert(msg); setJoinCode(''); setJoinMsg(null); }
+    else setJoinMsg('كلمة السر غير صحيحة — تحقق من صاحب الغرفة');
+  };
+  return (<div className="space-y-4">
+    {created&&(
+      <div className="card p-4 border-2 border-[#0A7C42] bg-green-50">
+        <div className="flex justify-between items-start">
+          <div>
+            <p className="font-bold text-[#0A7C42]">✅ تم إنشاء الغرفة: {created.name}</p>
+            <p className="text-sm text-gray-600 mt-2">كلمة السر (على الموقع مباشرة):</p>
+            <div className="flex items-center gap-3 mt-1">
+              <span className="text-4xl font-black tracking-widest text-[#0A7C42]">{created.code}</span>
+              <button onClick={()=>{ try{ navigator.clipboard.writeText(created.code); }catch(e){} setCopied(true); setTimeout(()=>setCopied(false),1500); }} className="btn px-3 py-1 bg-[#0A7C42] text-white text-xs">{copied?'✓ تم النسخ':'📋 نسخ الرمز'}</button>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">{created.visibility==='private'?'🔒 خاصة — أسأل كلمة السر لمن تدعوهم فقط':'🌐 عامة — الجميع يدخل بدون كلمة سر'}</p>
+          </div>
+          <button onClick={()=>setCreated(null)} className="text-gray-400 text-xl leading-none">✕</button>
+        </div>
+      </div>
+    )}
+    <div className="card p-4">
+      <h3 className="font-bold text-xl text-[#0A7C42]">غرفي</h3>
+      {myRooms.length>0?myRooms.map(g=>(
+        <div key={g.id} className="p-3 border-b border-gray-200 last:border-0">
+          <div className="flex justify-between items-center">
+            <span className="font-bold">{g.name}</span>
+            <span className={"text-xs font-bold rounded-lg px-2 py-1 "+(g.visibility==='private'?'bg-purple-100 text-purple-700':'bg-green-100 text-green-700')}>{g.visibility==='private'?'🔒 خاصة':'🌐 عام'}</span>
+          </div>
+          <p className="text-xs text-gray-500 mt-1">كلمة السر: <b className="text-[#0A7C42] text-lg tracking-wider">{g.code}</b></p>
+          {g.visibility==='private'&&<p className="text-xs text-gray-400 mt-1">🔒 غرفة خاصة — أرسل كلمة السر لمن تدعوهم فقط (6 أرقام)</p>}
+          {activeRoom===g.id?(
+            <div className="mt-3">
+              <JitsiRoom roomName={g.room} displayName={me.name} expanded={roomExpanded} onToggleExpand={()=>setRoomExpanded(!roomExpanded)} />
+              <button onClick={()=>setActiveRoom(null)} className="btn mt-2 w-full py-2 bg-red-100 text-red-700 text-sm">إغلاق الغرفة</button>
+            </div>
+          ):(
+            <button onClick={()=>setActiveRoom(g.id)} className="btn mt-2 w-full py-2 bg-[#0A7C42] text-white text-sm">📞 فتح الغرفة (صوت + فيديو)</button>
+          )}
+        </div>
+      )):<p className="text-gray-500">لا توجد غرف بعد — أنشئ غرفة جديدة</p>}
+    </div>
+    {privateRooms.length>0&&(
+      <div className="card p-4">
+        <h3 className="font-bold text-xl text-[#0A7C42]">الغرف الخاصة (للجميع — بكلمة سر)</h3>
+        {privateRooms.map(g=>(
+          <div key={g.id} className="p-3 border-b border-gray-200 last:border-0">
+            <div className="flex justify-between items-center">
+              <div>
+                <span className="font-bold">{g.name}</span>
+                <span className="text-xs text-gray-400 ml-2">({db.students.find(s=>s.id===g.by)?.name||'?'})</span>
+              </div>
+              <span className="text-xs font-bold rounded-lg px-2 py-1 bg-purple-100 text-purple-700">🔒 خاصة</span>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">🛡️ غرفة خاصة — تحتاج كلمة سر يعرفها صاحب الغرفة فقط</p>
+            {activeRoom===g.id?(
+              <div className="mt-3">
+                <JitsiRoom roomName={g.room} displayName={me.name} expanded={roomExpanded} onToggleExpand={()=>setRoomExpanded(!roomExpanded)} />
+                <button onClick={()=>setActiveRoom(null)} className="btn mt-2 w-full py-2 bg-red-100 text-red-700 text-sm">إغلاق الغرفة</button>
+              </div>
+            ):pwRoom===g.id?(
+              <div className="mt-2">
+                <div className="flex gap-2">
+                  <input type="password" inputMode="numeric" placeholder="كلمة سر الغرفة (6 أرقام)" value={pwVal} onChange={e=>setPwVal(e.target.value)} className="flex-1 text-sm" onKeyDown={e=>{ if(e.key==='Enter'){ document.getElementById('pwbtn-'+g.id)?.click(); } }}/>
+                  <button id={'pwbtn-'+g.id} onClick={()=>{
+                    if(pwVal.trim()===g.code){
+                      joinRoom(g.code, me.id); setActiveRoom(g.id); setPwRoom(null); setPwVal('');
+                    } else { alert('كلمة السر غير صحيحة — تحقق من صاحب الغرفة'); setPwVal(''); }
+                  }} className="btn px-4 py-2 bg-[#0A7C42] text-white text-sm">دخول</button>
+                </div>
+                <button onClick={()=>{setPwRoom(null); setPwVal('');}} className="text-xs text-gray-400 mt-1 underline">إلغاء</button>
+              </div>
+            ):(
+              <button onClick={()=>setPwRoom(g.id)} className="btn mt-2 w-full py-2 bg-[#0A7C42] text-white text-sm">📞 فتح الغرفة (تُطلب كلمة السر)</button>
+            )}
+          </div>
+        ))}
+      </div>
+    )}
+    <div className="card p-4">
+      <h3 className="font-bold text-xl text-[#0A7C42]">الغرف العامة</h3>
+      {publicRooms.length>0?publicRooms.map(g=>(
+        <div key={g.id} className="p-3 border-b border-gray-200 last:border-0">
+          <span className="font-bold">{g.name}</span>
+          <span className="text-xs text-gray-400 ml-2">({db.students.find(s=>s.id===g.by)?.name||'?'})</span>
+          {activeRoom===g.id?(
+            <div className="mt-3">
+              <JitsiRoom roomName={g.room} displayName={me.name} expanded={roomExpanded} onToggleExpand={()=>setRoomExpanded(!roomExpanded)} />
+              <button onClick={()=>setActiveRoom(null)} className="btn mt-2 w-full py-2 bg-red-100 text-red-700 text-sm">إغلاق الغرفة</button>
+            </div>
+          ):(
+            <button onClick={()=>setActiveRoom(g.id)} className="btn mt-2 w-full py-2 bg-[#0A7C42] text-white text-sm">📞 فتح الغرفة (صوت + فيديو)</button>
+          )}
+        </div>
+      )):<p className="text-gray-500">لا توجد غرف عامة بعد</p>}
+    </div>
+    <div className="card p-4">
+      <h3 className="font-bold text-xl text-[#0A7C42]">الانضمام إلى غرفة (بكلمة السر)</h3>
+      <p className="text-gray-500 text-sm mb-2">عندك كلمة سر غرفة؟ أدخلها هنا للانضمام مباشرة</p>
+      <div className="flex gap-2">
+        <input placeholder="كلمة السر (6 أرقام)" value={joinCode} onChange={e=>setJoinCode(e.target.value)} className="flex-1"/>
+        <button onClick={handleJoin} className="btn px-4 py-2 bg-[#0A7C42] text-white text-sm">انضمام</button>
+      </div>
+      {joinMsg&&<p className="text-sm text-red-600 mt-2">{joinMsg}</p>}
+    </div>
+    <div className="card p-4">
+      <h3 className="font-bold text-xl text-[#0A7C42]">إنشاء غرفة جديدة</h3>
+      {showCreate?(
+        <div className="space-y-3 mt-2">
+          <input placeholder="اسم الغرفة" value={name} onChange={e=>setName(e.target.value)}/>
+          <div className="flex gap-2">
+            <button onClick={()=>setVis('public')} className={"flex-1 py-2 rounded-lg font-bold "+(vis==='public'?'bg-green-600 text-white':'bg-gray-100 text-gray-500')}>🌐 عام</button>
+            <button onClick={()=>setVis('private')} className={"flex-1 py-2 rounded-lg font-bold "+(vis==='private'?'bg-purple-600 text-white':'bg-gray-100 text-gray-500')}>🔒 خاص</button>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={()=>setShowCreate(false)} className="btn flex-1 py-2 bg-gray-200 text-gray-700">إلغاء</button>
+            <button onClick={()=>{ if(!name.trim()){ alert('اكتب اسم الغرفة'); return; } const g=createGroup(name.trim(),me.id,{visibility:vis}); setShowCreate(false); setName(''); setCreated(g); }} className="btn flex-1 py-2 bg-[#0A7C42] text-white">إنشاء</button>
+          </div>
+        </div>
+      ):(
+        <button onClick={()=>setShowCreate(true)} className="btn w-full py-3 bg-[#0A7C42] text-white">+ إنشاء غرفة</button>
+      )}
+    </div>
+  </div>);
+}
+
+function Board({board,meId}){
+  return (<div className="space-y-4">
+    <div className="card p-4">
+      <h3 className="font-bold text-xl text-[#0A7C42]">المتصدرون</h3>
+      {board.slice(0,10).map((s,i)=>(
+        <div key={s.id} className="p-3 border-b border-gray-200 last:border-0 flex justify-between items-center">
+          <span className="font-bold">{i+1}. {s.name}</span>
+          <span className="text-[#0A7C42] font-bold">{s.points} نقطة</span>
+        </div>
+      ))}
+    </div>
+  </div>);
+}
+
+function Points({db,me,redeem}){
+  const canRedeem=me.points>=RULES.REDEEM_POINTS;
+  return (<div className="space-y-4">
+    <div className="card p-4">
+      <p className="font-bold mb-2">الصندوق هذا الشهر</p>
+      <div className="flex justify-between text-sm text-gray-600 mb-1"><span>المتبقي للصرف الفوري</span><b>{jod(db.pool.remaining)}</b></div>
+      <div className="h-3 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-[#0A7C42]" style={{width:(db.pool.remaining/RULES.MONTHLY_POOL*100)+'%'}}/></div>
+      {canRedeem&&
+        <button onClick={()=>alert(redeem(me.id)||'تم الاستبدال')} className="btn mt-3 w-full py-3 bg-[#C9992E] text-white">استبدل 500 نقطة → 30 قرشاً</button>}
+    </div>
+    <div className="card p-4">
+      <p className="font-bold mb-2">النقاط والإنجازات</p>
+      <p className="text-2xl font-black text-[#0A7C42]">{me.points} نقطة</p>
+      <p className="text-gray-500 mt-1">{RULES.BADGES.filter(b=>me.points>=b.p).pop()?.n||'لا يوجد'} {RULES.BADGES.filter(b=>me.points>=b.p).pop()?.i||''}</p>
+    </div>
+  </div>);
+}
+
+/* ================= Sup ================= */
+function Sup({db,approve,reject,setPool,markPaid,publish,delPub,logout,cloud}){
+  const [tab,setTab]=useState('pending');
+  const [subj,setSubj]=useState('');
+  const [ttl,setTtl]=useState('');
+  const [phView,setPhView]=useState(null); /* {aid, photos, loading} */
+  const [pubOk,setPubOk]=useState(false);
+  const openPhotos=async aid=>{
+    setPhView({aid, photos:[], loading:true});
+    const list=await fetchPhotos(aid);
+    setPhView({aid, photos:list, loading:false});
+  };
+  const pending=db.assignments.filter(a=>a.status==='pending'||a.status==='awaiting');
+  const approved=db.assignments.filter(a=>a.status==='approved');
+  const rejected=db.assignments.filter(a=>a.status==='rejected');
+  const tabs=[['pending','قيد المراجعة','📋'],['approved','مُعتمد','✅'],['rejected','مرفوض','❌'],['publish','نشر واجب','📢'],['pool','الصندوق','💰'],['payouts','الصرف','💳']];
+  return (
+  <div className="max-w-lg mx-auto pb-24">
+    <div className="bg-[#15201B] text-white px-4 pt-5 pb-16 rounded-b-3xl">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">🏫</span><span className="font-black text-xl">سلبود — المشرف</span>{cloud}
+        </div>
+        <button onClick={logout} className="text-white/70 text-sm btn px-3 py-1 border border-white/30">خروج</button>
+      </div>
+      <p className="mt-4 text-white/80">أهلاً يا {db.supervisor.name}</p>
+    </div>
+    <div className="px-4 -mt-10">
+      <div className="flex gap-1 mb-4 bg-gray-100 rounded-xl p-1 overflow-x-auto">
+        {tabs.map(([k,l,i])=>(
+          <button key={k} onClick={()=>setTab(k)} className={"flex-1 min-w-[70px] py-2 rounded-lg font-bold text-xs "+(tab===k?'bg-[#15201B] text-white':'text-gray-500')}>{i}<br/>{l}</button>
+        ))}
+      </div>
+      {tab==='pending'&&(
+        <div className="space-y-3">
+          {pending.length===0&&<p className="text-center text-gray-400 py-8">لا توجد واجبات قيد المراجعة</p>}
+          {pending.map(a=>(
+            <div key={a.id} className="card p-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="font-bold">{db.students.find(s=>s.id===a.sid)?.name} — {a.subject}</p>
+                  <p className="text-xs text-gray-400">{fmt(a.ts)} • {a.type==='group'?'جماعي':'فردي'} • {(Array.isArray(a.photos)?a.photos.length:(a.photos&&a.photos.n)||0)} صور</p>
+                </div>
+                <span className={"text-xs font-bold rounded-lg px-2 py-1 "+(a.status==='awaiting'?'bg-yellow-100 text-yellow-700':'bg-blue-100 text-blue-700')}>{a.status==='awaiting'?'بانتظار فيديو':'قيد المراجعة'}</span>
+              </div>
+              {Array.isArray(a.photos)&&a.photos.length>0&&(
+                <div className="flex gap-2 mt-3 overflow-x-auto">
+                  {a.photos.map((p,i)=>(<img key={i} src={p} className="w-20 h-20 object-cover rounded-lg border border-gray-200"/>))}
+                </div>
+              )}
+              {a.photos&&typeof a.photos==='object'&&!Array.isArray(a.photos)&&a.photos.n>0&&(
+                <button onClick={()=>openPhotos(a.id)} className="w-full mt-3 btn py-2 bg-gray-100 text-gray-700 text-sm">🖼️ عرض الصور ({a.photos.n}) {phView&&phView.aid===a.id&&phView.loading?'(جاري التحميل...)':''}</button>
+              )}
+              <div className="flex gap-2 mt-3">
+                <button onClick={()=>reject(a.id,'لم يُستوفَ المعايير')} className="btn flex-1 py-2 bg-red-100 text-red-700 text-sm">رفض</button>
+                <button onClick={()=>approve(a.id)} className="btn flex-1 py-2 bg-[#0A7C42] text-white text-sm">اعتماد (+{a.points} نقطة)</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {tab==='approved'&&(
+        <div className="space-y-3">
+          {approved.length===0&&<p className="text-center text-gray-400 py-8">لا توجد واجبات مُعتمدة</p>}
+          {approved.map(a=>(
+            <div key={a.id} className="card p-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="font-bold">{db.students.find(s=>s.id===a.sid)?.name} — {a.subject}</p>
+                  <p className="text-xs text-gray-400">{fmt(a.ts)} • {a.type==='group'?'جماعي':'فردي'} • +{a.points} نقطة</p>
+                </div>
+                <span className="text-xs bg-green-100 text-green-700 font-bold rounded-lg px-2 py-1">✅ مُعتمد</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {tab==='rejected'&&(
+        <div className="space-y-3">
+          {rejected.length===0&&<p className="text-center text-gray-400 py-8">لا توجد واجبات مرفضة</p>}
+          {rejected.map(a=>(
+            <div key={a.id} className="card p-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="font-bold">{db.students.find(s=>s.id===a.sid)?.name} — {a.subject}</p>
+                  <p className="text-xs text-gray-400">{fmt(a.ts)} • {a.why||'قرار المشرف'}</p>
+                </div>
+                <span className="text-xs bg-red-100 text-red-700 font-bold rounded-lg px-2 py-1">❌ مرفوض</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {tab==='publish'&&(
+        <div className="space-y-3">
+          <div className="card p-4">
+            <h3 className="font-bold text-xl text-[#0A7C42]">نشر واجب جديد</h3>
+            <input placeholder="المادة" value={subj} onChange={e=>setSubj(e.target.value)} className="mt-2" />
+            <input placeholder="عنوان الواجب" value={ttl} onChange={e=>setTtl(e.target.value)} className="mt-2" />
+            <button onClick={()=>{ const s=subj.trim(), t=ttl.trim(); if(!s||!t){ alert('أكمل جميع الحقول'); return; } publish(s,t); setSubj(''); setTtl(''); setPubOk(true); setTimeout(()=>setPubOk(false),3000); }} className="btn mt-3 w-full py-3 bg-[#0A7C42] text-white">نشر</button>
+            {pubOk&&<p className="text-center text-sm font-bold text-[#0A7C42] mt-2">✓ تم نشر الواجب — وصل للطلاب</p>}
+          </div>
+          <div className="card p-4">
+            <h3 className="font-bold text-xl text-[#0A7C42]">الواجبات المنشورة</h3>
+            {(db.pubs||[]).map(p=>(
+              <div key={p.id} className="p-3 border-b border-gray-200 last:border-0 flex justify-between items-center">
+                <div>
+                  <p className="font-bold">{p.subject} — {p.title}</p>
+                  <p className="text-xs text-gray-400">{fmt(p.ts)}</p>
+                </div>
+                <button onClick={()=>delPub(p.id)} className="text-red-500 text-sm">حذف</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {tab==='pool'&&(
+        <div className="card p-4">
+          <h3 className="font-bold text-xl text-[#0A7C42]">الصندوق الشهري</h3>
+          <div className="flex justify-between text-sm text-gray-600 mb-1 mt-2"><span>المتبقي للصرف الفوري</span><b>{jod(db.pool.remaining)}</b></div>
+          <div className="h-3 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-[#0A7C42]" style={{width:(db.pool.remaining/RULES.MONTHLY_POOL*100)+'%'}}/></div>
+          <p className="text-xs text-gray-400 mt-2">الصندوق: {RULES.MONTHLY_POOL} د.أ/شهر + احتياط {RULES.RESERVE} د.أ</p>
+          <div className="flex gap-2 mt-4">
+            <button onClick={()=>setPool(0)} className="btn flex-1 py-2 bg-red-100 text-red-700">فراغ الصندوق</button>
+            <button onClick={()=>setPool(RULES.MONTHLY_POOL)} className="btn flex-1 py-2 bg-[#0A7C42] text-white">إعادة تعيين</button>
+          </div>
+        </div>
+      )}
+      {tab==='payouts'&&(
+        <div className="space-y-3">
+          {db.payouts.length===0&&<p className="text-center text-gray-400 py-8">لا توجد طلبات صرف</p>}
+          {db.payouts.map(p=>(
+            <div key={p.id} className="card p-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="font-bold">{db.students.find(s=>s.id===p.sid)?.name}</p>
+                  <p className="text-xs text-gray-400">{p.day} • {p.status}</p>
+                </div>
+                {p.status!=='تمّ تسليمه ✓'&&<button onClick={()=>markPaid(p.id)} className="btn py-1 px-3 bg-[#0A7C42] text-white text-sm">تمّ التسليم</button>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {phView&&(
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={()=>setPhView(null)}>
+          <div className="card p-4 max-w-md w-full max-h-[80vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-2"><h3 className="font-bold">🖼️ صور الحل</h3><button onClick={()=>setPhView(null)} className="text-gray-400 text-xl">✕</button></div>
+            {phView.loading?(<p className="text-center text-gray-400 py-6">جاري تحميل الصور من السحابة...</p>):(
+              phView.photos.length===0?(<p className="text-center text-gray-400 py-6">ما لقيت صور — تأكد أن خادم المشرف شغال</p>):(
+                <div className="grid grid-cols-2 gap-2">{phView.photos.map((p,i)=>(<img key={i} src={p} className="w-full rounded-lg border border-gray-200"/>))}</div>
+              )
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+  );
+}
+
+/* ================= Shield: ما في صفحة تختفي بصمت بعد اليوم ================= */
+window.addEventListener('error',e=>{ try{ console.error('[سلبود]', e.message, e.filename, e.lineno); }catch(x){} });
+class Guard extends React.Component{
+  constructor(p){ super(p); this.state={err:null}; }
+  static getDerivedStateFromError(e){ return {err:e}; }
+  componentDidCatch(e,info){ try{ console.error('[سلبود فادح]',e); }catch(x){} }
+  render(){
+    if(this.state.err) return (
+      <div style={{direction:'rtl'}} className="min-h-screen flex items-center justify-center p-4">
+        <div className="card p-6 max-w-md w-full text-center">
+          <div className="text-4xl mb-2">🛠️</div>
+          <p className="font-bold text-lg">صار خطأ بسيط بالبرنامج — ما ضاع شي</p>
+          <p className="text-gray-500 text-xs mt-2 mb-4 break-words">{String((this.state.err&&this.state.err.message)||this.state.err||'خطأ غير معروف')}</p>
+          <button onClick={()=>this.setState({err:null})} className="btn w-full py-2 bg-[#0A7C42] text-white">إعادة المحاولة</button>
+          <button onClick={()=>{ storeDel(SESSION_KEY); location.reload(); }} className="btn w-full py-2 bg-gray-200 text-gray-700 mt-2">تحديث الصفحة</button>
+        </div>
+      </div>
+    );
+    return this.props.children;
+  }
+}
+
+/* ================= Root ================= */
+const root=document.getElementById('root');
+ReactDOM.render(<Guard><App /></Guard>, root);
+try{ const b=document.getElementById('boot'); if(b) b.remove(); }catch(e){}
+</script>
+</body>
+</html>
